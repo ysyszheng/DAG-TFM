@@ -1,0 +1,206 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import sys
+import os
+import warnings
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+warnings.filterwarnings("ignore")
+
+import gym
+import matplotlib.pyplot as plt
+from scipy.optimize import brentq, fsolve, root_scalar
+from gym import spaces
+import numpy as np
+import random
+import pickle
+from utils.log import log
+
+
+class DAGEnv(gym.Env):
+    def __init__(self,
+                 max_agents_num,
+                 lambd,
+                 delta,
+                 b,
+                 is_burn=False):
+        self.max_agents_num = max_agents_num
+        self.lambd = lambd
+        self.delta = delta
+        self.b = b
+        self.is_burn = is_burn
+        self.eps = 1e-8
+
+        # action: transaction fee
+        self.action_space = spaces.Box(
+            low=0, high=np.inf, shape=(max_agents_num,), dtype=np.float32)
+        # state: private values of agents and number of agents
+        self.observation_space = spaces.Box(
+            low=0, high=np.inf, shape=(max_agents_num,), dtype=np.float32)
+
+        with open('./envs/fee.pkl', 'rb') as file:
+            self.fee_list = pickle.load(file)
+
+    def f(self, p):
+        assert np.all(p >= 0 and p <= 1)
+        if np.isscalar(p):
+            if p == 0:
+                return 1
+            else:
+                return (1 - np.exp(-self.lambd * self.delta * p)) / (self.lambd * self.delta * p)
+        else:
+            ratios = np.ones_like(p)
+            mask = (p != 0)
+
+            ratios[mask] = (1 - np.exp(-self.lambd * self.delta * p[mask])) / (self.lambd * self.delta * p[mask])
+            return ratios
+
+    def invf(self, y):
+        # NOTE: bracket should be [0, np.inf]
+        if np.isscalar(y):
+            result = root_scalar(lambda x: self.f(x) - y, method='brentq', bracket=[0, 1])
+            return result.root
+        else:
+            roots = np.zeros_like(y)
+            for i, y_val in np.ndenumerate(y):
+                result = root_scalar(lambda x: self.f(x) - y_val, method='brentq', bracket=[0, 1])
+                roots[i] = result.root
+            return roots
+        
+    def invf_with_clip(self, y):
+        assert np.all(y >= 0 and y <= 1)
+        if np.isscalar(y):
+            if y <= self.f(1):
+                return 1
+            else:
+                result = root_scalar(lambda x: self.f(x) - y, method='brentq', bracket=[0, 1])
+                return result.root
+        else:
+            roots = np.zeros_like(y)
+            for i, y_val in np.ndenumerate(y):
+                if y_val <= self.f(1):
+                    roots[i] = 1
+                else:
+                    result = root_scalar(lambda x: self.f(x) - y_val, method='brentq', bracket=[0, 1])
+                    roots[i] = result.root
+            return roots
+
+    def reset(self):
+        # self.num_agents = np.random.randint(self.max_agents_num)
+        self.num_agents = self.max_agents_num
+        self.state = np.array(random.sample(self.fee_list, self.num_agents))
+        self.num_miners = 1 + np.random.poisson(self.lambd)
+
+        return self.state
+
+    def step(self, actions):
+        rewards, probabilities = self.calculate_rewards(actions)
+        done = True
+        self.reset()
+
+        return self.state, rewards, done, {"probabilities": probabilities}
+
+    def calculate_probabilities(self, actions: np.ndarray) -> np.ndarray:
+        zero_indices = np.where(actions == 0)[0]
+        actions_without_zero = np.delete(actions, zero_indices)
+
+        if len(actions_without_zero) <= self.b:
+            probabilities = np.ones(self.num_agents)
+            probabilities[zero_indices] = 0
+            return probabilities
+        
+        if np.all(actions_without_zero == actions_without_zero[0]):
+            probabilities = np.ones(self.num_agents) * (self.b / len(actions_without_zero))
+            probabilities[zero_indices] = 0
+            return probabilities
+
+        probabilities = np.zeros(self.num_agents)
+        v, k = np.unique(actions_without_zero, return_counts=True)
+        # v, k = np.unique(actions, return_counts=True)
+        v, k = v[::-1], k[::-1]
+
+        def G(l, z):
+            assert l >= 0 and l < self.num_agents
+            res = 0
+            for h in range(l+1):
+                res += k[h] * self.invf_with_clip(z/(v[h]))
+            return (res - self.b)
+
+        k_max = -1
+        flag = False
+        while (k_max + 1) < len(v) and not flag:
+            k_max += 1
+            for l in range(k_max+1):
+                if G(l, v[l]) > 0:
+                    flag = True
+                    k_max -= 1
+                    break
+
+        def G_k_max(z): return G(k_max, z)
+
+        # self.plot(G_k_max, (0, v[k_max]))
+        # log('b', self.b, 'num_agents', self.num_agents)
+        # log('actions', actions)
+        # log('G(0, v[0])', G(0, v[0]))
+        # log('v', v)
+        # log('k_max', k_max, 'v[k_max]', v[k_max])
+        # log('G_k_max(0)', G_k_max(0), 'G_k_max(v[k_max])', G_k_max(v[k_max]))
+        
+        c_k_max = brentq(G_k_max, 0, v[k_max])
+        # c_k_max = fsolve(G_k_max, x0=v[k_max])[0]
+
+        p = [0 for _ in range(self.num_agents)]
+        for l in range(k_max+1):  # k[l] != 0
+            p[l] = self.invf_with_clip(c_k_max/(v[l]))
+
+        for i in range(self.num_agents):
+            if actions[i] == 0:
+                probabilities[i] = 0
+            else:
+                idx = np.where(actions[i] == v)[0][0]
+                probabilities[i] = p[idx]
+        return probabilities
+
+    def calculate_rewards(self, actions):
+        rewards = np.zeros(self.num_agents)
+        if self.is_burn:
+            probabilities = self.calculate_probabilities(np.log(1+actions))
+        else:
+            probabilities = self.calculate_probabilities(actions)
+
+        for i in range(self.num_agents):
+            private_value = self.state[i]
+            offer_price = actions[i]
+            probability = probabilities[i]
+
+            if offer_price < private_value:
+                rewards[i] =  (1 - (1 - probability) ** self.num_miners) * \
+                    (private_value - offer_price)
+            else:
+                rewards[i] = 0
+
+        return rewards, probabilities
+
+    def plot(self, func=None, bounds=(-5, 5), num=1000):
+        x = np.linspace(bounds[0], bounds[1], num)
+        if func is not None:
+            y = func(x)
+        plt.plot(x, y)
+        plt.title(func.__name__)
+        plt.show()
+
+
+if __name__ == '__main__':
+    from config.cfg import cfg
+
+    env = DAGEnv(
+            max_agents_num=cfg['max_agents_num'],
+            lambd=cfg['lambd'],
+            delta=cfg['delta'],
+            b=cfg['b'],
+            is_burn=cfg['is_burn']
+    )
+    env.plot(env.f, (0, 1))
+    env.plot(env.invf, (env.f(1), 1))
+    env.plot(env.invf_with_clip, (0, 1))
