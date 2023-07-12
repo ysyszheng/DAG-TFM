@@ -5,7 +5,6 @@ tmp/
 *.log
 *.pth
 *.npy
-*.csv
 backup/
 data/
 img/

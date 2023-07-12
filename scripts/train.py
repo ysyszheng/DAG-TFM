@@ -49,8 +49,7 @@ class Trainer(object):
           self.cfg['num_miners'] = self.env.num_miners
           action = np.zeros_like(state)
           for i in range(len(state)):
-              action[i] = self.agent.select_action_with_exp(
-                  state[i], self.cfg['exp_std'])
+              action[i] = self.agent.select_action_with_exp(state[i], self.cfg['exp_std'])
           next_state, reward, done, info = self.env.step(action)
 
           with open(f'{self.cfg["fn"]}_{self.cfg["mode"]}.csv', 'a', newline='') as csvfile:

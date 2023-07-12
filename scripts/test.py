@@ -12,7 +12,7 @@ class Tester(object):
     def __init__(self, cfg):
         super(Tester, self).__init__()
         self.cfg = cfg
-        fix_seed(cfg['seed'])
+        fix_seed(cfg['seed'] + 666)
 
         self.env = gym.make(
             'gym_dag_env-v0',
@@ -33,7 +33,7 @@ class Tester(object):
             cfg['epsilon_decay']
         )
         self.rewards_lst = []
-        self.agent.actor.load_state_dict(torch.load('./models/actor_2000.pth'))
+        self.agent.actor.load_state_dict(torch.load('./models/actor_2000.pth')) # !!!!!!!!!
     
     def testing(self):
       state = self.env.reset()
@@ -68,3 +68,5 @@ class Tester(object):
 
           self.rewards_lst.append(sum(reward))
           progress_bar.set_description(f"total revenue: {self.rewards_lst[-1]}")
+      log(f"total revenue: {self.rewards_lst}")
+ 

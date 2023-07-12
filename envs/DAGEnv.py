@@ -57,6 +57,7 @@ class DAGEnv(gym.Env):
             return ratios
 
     def invf(self, y):
+        # ! Don't use this function, use invf_with_clip instead
         # NOTE: bracket should be [0, np.inf]
         if np.isscalar(y):
             result = root_scalar(lambda x: self.f(x) - y, method='brentq', bracket=[0, 1])
