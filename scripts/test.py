@@ -34,7 +34,6 @@ class Tester(object):
         )
         self.rewards_lst = []
         self.agent.actor.load_state_dict(torch.load('./models/actor_2000.pth'))
-        # self.agent.critic.load_state_dict(torch.load('./models/critic_2000.pth'))
     
     def testing(self):
       state = self.env.reset()
@@ -49,6 +48,9 @@ class Tester(object):
           self.cfg['num_miners'] = self.env.num_miners
           action = np.zeros_like(state)
           for i in range(len(state)):
+            if i == 0 and self.cfg['mode'] == 'verify':
+              action[i] = self.agent.select_action_all_with_exp(state[i], self.cfg['verify_std'])
+            else:
               action[i] = self.agent.select_action(state[i])
           next_state, reward, done, info = self.env.step(action)
 

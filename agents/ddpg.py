@@ -99,7 +99,11 @@ class DDPG(object):
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
         return self.actor.act_with_exp(state, std) \
-          if np.random.rand() > self.epsilon else self.actor.act(state)
+          if np.random.rand() < self.epsilon else self.actor.act(state)
+
+    def select_action_all_with_exp(self, state, std):
+        state = torch.FloatTensor(state).reshape(1, -1).to(self.device)
+        return self.actor.act_with_exp(state, std)
 
     def update(self, replay_buffer, iterations):
         for _ in range(iterations):

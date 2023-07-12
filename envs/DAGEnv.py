@@ -117,7 +117,6 @@ class DAGEnv(gym.Env):
 
         probabilities = np.zeros(self.num_agents)
         v, k = np.unique(actions_without_zero, return_counts=True)
-        # v, k = np.unique(actions, return_counts=True)
         v, k = v[::-1], k[::-1]
 
         def G(l, z):
@@ -141,9 +140,10 @@ class DAGEnv(gym.Env):
 
         # self.plot(G_k_max, (0, v[k_max]))
         # log('b', self.b, 'num_agents', self.num_agents)
-        # log('actions', actions)
         # log('G(0, v[0])', G(0, v[0]))
+        # log('actions_without_zero', actions_without_zero)
         # log('v', v)
+        # log('k', k)
         # log('k_max', k_max, 'v[k_max]', v[k_max])
         # log('G_k_max(0)', G_k_max(0), 'G_k_max(v[k_max])', G_k_max(v[k_max]))
         

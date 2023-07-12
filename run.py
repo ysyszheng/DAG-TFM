@@ -23,13 +23,9 @@ if __name__ == '__main__':
         from scripts.train import Trainer
         trainer = Trainer(cfg)
         trainer.training()
-    elif args.mode == 'test':
+    elif args.mode == 'test' or args.mode == 'verify':
         from scripts.test import Tester
         tester = Tester(cfg)
         tester.testing()
-    elif args.mode == 'verify':
-        from scripts.verify import Verifier
-        verifier = Verifier(cfg)
-        verifier.verifying()
     else:
         raise NotImplementedError
