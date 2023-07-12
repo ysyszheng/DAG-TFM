@@ -7,7 +7,6 @@ tmp/
 *.npy
 backup/
 data/
-img/
 fee.pkl
 *.tsv.gz
 

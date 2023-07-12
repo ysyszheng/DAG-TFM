@@ -12,7 +12,7 @@ cfg = {
     'gamma': 0.99,
     'lr': 1e-3,
     'tau': 0.001,
-    'exp_std': 0.5,
+    'exp_std': 0.1, # 0.5
     'verify_std': 0.01,
     'iterations': 1,
     'epsilon_min': 0.1,
