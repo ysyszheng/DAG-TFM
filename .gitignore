@@ -7,6 +7,10 @@ tmp/
 *.npy
 backup/
 data/
+rewards/
+img/
+models/
+out/
 fee.pkl
 *.tsv.gz
 

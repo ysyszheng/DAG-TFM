@@ -102,6 +102,20 @@ class DAGEnv(gym.Env):
 
         return self.state, rewards, done, {"probabilities": probabilities}
 
+    def find_optim_action(self, actions, idx=0, cnt=100):
+        assert idx >= 0 and idx < self.num_agents
+        s = self.state[idx]
+        max_reward = -1
+        optim_action = 0
+        for a in np.linspace(0, s, cnt):
+            actions[idx] = a
+            rewards, _ = self.calculate_rewards(actions)
+            print(a, ',', rewards[idx])
+            if rewards[idx] > max_reward:
+                max_reward = rewards[idx]
+                optim_action = a
+        return optim_action
+
     def calculate_probabilities(self, actions: np.ndarray) -> np.ndarray:
         zero_indices = np.where(actions == 0)[0]
         actions_without_zero = np.delete(actions, zero_indices)

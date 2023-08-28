@@ -121,12 +121,14 @@ class DDPG(object):
 
             self.critic_optimizer.zero_grad()
             critic_loss.backward()
+            # torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=5.0) # !!
             self.critic_optimizer.step()
 
             actor_loss = -self.critic(state, self.actor(state)).mean()
 
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
+            # torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=5.0) # !!
             self.actor_optimizer.step()
 
             for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):

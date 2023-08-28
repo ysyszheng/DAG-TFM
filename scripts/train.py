@@ -74,4 +74,4 @@ class Trainer(object):
           if step % self.cfg['save_freq'] == 0:
               torch.save(self.agent.actor.state_dict(), f'./models/actor_{step}.pth')
               torch.save(self.agent.critic.state_dict(), f'./models/critic_{step}.pth')
-              np.save(f'./data/rewards_{step}.npy', self.rewards_lst)
+              np.save(f'./rewards/rewards_{step}.npy', self.rewards_lst)

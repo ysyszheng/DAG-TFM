@@ -33,7 +33,7 @@ class Tester(object):
             cfg['epsilon_decay']
         )
         self.rewards_lst = []
-        self.agent.actor.load_state_dict(torch.load('./models/actor_2000.pth')) # !!!!!!!!!
+        self.agent.actor.load_state_dict(torch.load('./models/actor_150.pth')) # !!!!!!!!!
     
     def testing(self):
       state = self.env.reset()
@@ -47,11 +47,17 @@ class Tester(object):
       for step in progress_bar:
           self.cfg['num_miners'] = self.env.num_miners
           action = np.zeros_like(state)
+
           for i in range(len(state)):
-            if i == 0 and self.cfg['mode'] == 'verify':
+            if i == self.cfg['optim_idx'] and self.cfg['mode'] == 'verify':
               action[i] = self.agent.select_action_all_with_exp(state[i], self.cfg['verify_std'])
             else:
               action[i] = self.agent.select_action(state[i])
+        
+          if self.cfg['mode'] == 'optim':
+            optim_action = self.env.find_optim_action(action, self.cfg['optim_idx'], self.cfg['optim_cnt'])
+            action[self.cfg['optim_idx']] = optim_action
+
           next_state, reward, done, info = self.env.step(action)
 
           with open(f'{self.cfg["fn"]}_{self.cfg["mode"]}.csv', 'a', newline='') as csvfile:

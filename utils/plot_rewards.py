@@ -10,10 +10,10 @@ if __name__ == '__main__':
     
     steps = args.steps
     window_size = args.window_size
-    rewards = np.load(f'./data/rewards_{steps}.npy')
+    rewards = np.load(f'./rewards/rewards_{steps}.npy')
     moving_average = np.convolve(rewards, np.ones(window_size)/window_size, mode='valid')
     
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(18, 6))
     plt.plot(rewards, label='Rewards')
     plt.plot(moving_average, label=f'Moving Average ({window_size})')
     plt.legend()
