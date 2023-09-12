@@ -1,6 +1,20 @@
 DAG+TFM
 =======
 
+Code
+-----
+
+`done` is always True
+
+
+Data
+-----
+
+[https://gz.blockchair.com/bitcoin/transactions/](https://gz.blockchair.com/bitcoin/transactions/)
+
+Run
+-----
+
 ```bash
 # train
 python3 ./run.py --mode train --fn <data save to file>

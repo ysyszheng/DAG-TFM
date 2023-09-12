@@ -1,0 +1,10 @@
+steps: 1000000
+gamma: 0.99
+actor_lr: .0003
+critic_lr: .001
+c1: .5
+c2: .01
+K_epochs: 80
+eps_clip: 0.2
+update_freq: 40
+save_freq: 100

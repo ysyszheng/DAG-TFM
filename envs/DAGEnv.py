@@ -32,10 +32,11 @@ class DAGEnv(gym.Env):
         self.is_burn = is_burn
         self.eps = 1e-8
 
-        # action: transaction fee
+        # * action: transaction fee
         self.action_space = spaces.Box(
             low=0, high=np.inf, shape=(max_agents_num,), dtype=np.float32)
-        # state: private values of agents and number of agents
+        # * state: private values of agents and number of agents
+        # * let numbers of agents be fixed, i.e. num_agents = max_agents_num
         self.observation_space = spaces.Box(
             low=0, high=np.inf, shape=(max_agents_num,), dtype=np.float32)
 
@@ -58,7 +59,7 @@ class DAGEnv(gym.Env):
 
     def invf(self, y):
         # ! Don't use this function, use invf_with_clip instead
-        # NOTE: bracket should be [0, np.inf]
+        # * bracket should be [0, np.inf]
         if np.isscalar(y):
             result = root_scalar(lambda x: self.f(x) - y, method='brentq', bracket=[0, 1])
             return result.root
@@ -89,6 +90,7 @@ class DAGEnv(gym.Env):
 
     def reset(self):
         # self.num_agents = np.random.randint(self.max_agents_num)
+        # * fix the number of agents
         self.num_agents = self.max_agents_num
         self.state = np.array(random.sample(self.fee_list, self.num_agents))
         self.num_miners = 1 + np.random.poisson(self.lambd)
@@ -207,14 +209,20 @@ class DAGEnv(gym.Env):
 
 
 if __name__ == '__main__':
-    from config.cfg import cfg
+    import yaml
+    from easydict import EasyDict as edict
+    BASE_CONFIGS_PATH = r'./config/base.yaml'
+
+    with open(BASE_CONFIGS_PATH, 'r') as cfg_file:
+        base_cfgs = yaml.load(cfg_file, Loader=yaml.FullLoader)
+    base_cfgs = edict(base_cfgs)
 
     env = DAGEnv(
-            max_agents_num=cfg['max_agents_num'],
-            lambd=cfg['lambd'],
-            delta=cfg['delta'],
-            b=cfg['b'],
-            is_burn=cfg['is_burn']
+            max_agents_num=base_cfgs.max_agents_num,
+            lambd=base_cfgs.lambd,
+            delta=base_cfgs.delta,
+            b=base_cfgs.b,
+            is_burn=base_cfgs.is_burn
     )
     env.plot(env.f, (0, 1))
     env.plot(env.invf, (env.f(1), 1))
