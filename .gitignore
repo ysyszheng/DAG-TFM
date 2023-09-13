@@ -1,18 +1,19 @@
 # Personal config
+.DS_Store
 test/
 tmp/
-.DS_Store
 *.log
 *.pth
-*.npy
+fee.npy
 backup/
-data/
+data/*.tsv.gz
+data/*.tsv
 rewards/
 img/
 models/
 out/
 fee.pkl
-*.tsv.gz
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

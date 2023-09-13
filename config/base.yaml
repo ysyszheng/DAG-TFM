@@ -3,4 +3,4 @@ max_agents_num: 100
 lambd: .6
 delta: 10
 b: 20
-is_burn: True
+is_burn: False

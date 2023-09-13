@@ -24,6 +24,7 @@ class Trainer(object):
     def training(self):
         state = self.env.reset()
         reward_list = []
+        social_welfare_list = []
 
         progress_bar = tqdm(range(1, self.cfgs.steps+1))
         for step in progress_bar:
@@ -33,7 +34,8 @@ class Trainer(object):
                 action[i] = self.agent.select_action(state[i])
 
             next_state, reward, _, _ = self.env.step(action * state)
-            reward_list.append(sum(reward))
+            reward_list.extend(reward)
+            social_welfare_list.append(sum(reward))
             self.agent.buffer.rewards.extend(reward)
             state = next_state
 
@@ -44,5 +46,6 @@ class Trainer(object):
             if step % self.cfgs.save_freq == 0:
                 log('Save...')
                 np.save(f"./rewards_history.npy", np.array(reward_list))
+                np.save(f"./social_welfare_history.npy", np.array(social_welfare_list))
 
             progress_bar.set_description(f"step: {step}, reward: {sum(reward)}")

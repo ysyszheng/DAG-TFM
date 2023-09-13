@@ -14,7 +14,6 @@ from scipy.optimize import brentq, fsolve, root_scalar
 from gym import spaces
 import numpy as np
 import random
-import pickle
 from utils.log import log
 
 
@@ -40,8 +39,7 @@ class DAGEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=0, high=np.inf, shape=(max_agents_num,), dtype=np.float32)
 
-        with open('./envs/fee.pkl', 'rb') as file:
-            self.fee_list = pickle.load(file)
+        self.fee_list = np.load(r'./data/fee.npy')
 
     def f(self, p):
         assert np.all(p >= 0 and p <= 1)

@@ -28,6 +28,11 @@ class Actor(nn.Module):
     def evaluate(self, s, a):
         mu = torch.sigmoid(self.mu_head(self.net(s)))
         sigma = F.softplus(self.sigma_head(self.net(s)))
+        # if has nan in mu
+        if torch.isnan(mu).any() or torch.isnan(sigma).any():
+            log(mu, sigma)
+            log(s)
+            log(a)
         dist = torch.distributions.Normal(mu, sigma)
         log_prob = dist.log_prob(a)
         entropy = dist.entropy()
