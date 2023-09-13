@@ -1,0 +1,4 @@
+data/fee.npy filter=lfs diff=lfs merge=lfs -text
+data/fee_202301.npy filter=lfs diff=lfs merge=lfs -text
+data/fee_202302.npy filter=lfs diff=lfs merge=lfs -text
+data/fee_202303.npy filter=lfs diff=lfs merge=lfs -text
