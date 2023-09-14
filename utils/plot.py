@@ -34,8 +34,10 @@ def plot_rewards(steps, window_size):
 
 
 if __name__ == '__main__':
-    reward = np.load('./rewards_history.npy')
-    plt.figure(figsize=(18, 6))
-    plt.plot(reward, label='Rewards')
-    plt.legend()
-    plt.show()
+    # reward = np.load('./social_welfare_history.npy')
+    # plt.figure(figsize=(18, 6))
+    # plt.plot(reward, label='Rewards')
+    # plt.legend()
+    # plt.show()
+    action = np.load('action_history.npy')
+    print(action)

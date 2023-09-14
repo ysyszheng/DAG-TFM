@@ -19,6 +19,7 @@ from utils.log import log
 
 class DAGEnv(gym.Env):
     def __init__(self,
+                 fee_data_path,
                  max_agents_num,
                  lambd,
                  delta,
@@ -39,7 +40,7 @@ class DAGEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=0, high=np.inf, shape=(max_agents_num,), dtype=np.float32)
 
-        self.fee_list = np.load(r'./data/fee.npy')
+        self.fee_list = np.load(fee_data_path)
 
     def f(self, p):
         assert np.all(p >= 0 and p <= 1)
@@ -90,7 +91,7 @@ class DAGEnv(gym.Env):
         # self.num_agents = np.random.randint(self.max_agents_num)
         # * fix the number of agents
         self.num_agents = self.max_agents_num
-        self.state = np.array(random.sample(self.fee_list, self.num_agents))
+        self.state = np.array([self.fee_list[i] for i in np.random.randint(len(self.fee_list), size=self.num_agents)])
         self.num_miners = 1 + np.random.poisson(self.lambd)
 
         return self.state
@@ -216,6 +217,7 @@ if __name__ == '__main__':
     base_cfgs = edict(base_cfgs)
 
     env = DAGEnv(
+            fee_data_path=base_cfgs.fee_data_path,
             max_agents_num=base_cfgs.max_agents_num,
             lambd=base_cfgs.lambd,
             delta=base_cfgs.delta,

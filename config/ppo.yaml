@@ -1,10 +1,15 @@
-steps: 1000000
+steps: 100000
 gamma: 0.99
 actor_lr: .0003
 critic_lr: .001
 c1: .5
 c2: .01
-K_epochs: 80
+K_epochs: 10 # 80
 eps_clip: 0.2
+std_init: 1
+std_decay: .9
+std_min: .01
+std_decay_freq: 40
 update_freq: 40
 save_freq: 100
+test_freq: 40 # same as update_freq

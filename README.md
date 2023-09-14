@@ -6,6 +6,11 @@ Environment
 
 In our DAG enviroment ([`DAGEnv`](./envs/DAGEnv.py)), episode step is 1, so `done` flag is always True.
 
+Config
+-----
+
+Base config is in [`./config/base.yaml`](./config/base.yaml). Part of the config parameters are from _TIPS: Transaction Inclusion Protocol With Signaling in DAG-Based Blockchain_
+
 Data
 -----
 
@@ -24,12 +29,5 @@ Run
 -----
 
 ```bash
-# train
-python3 ./run.py --mode train --fn <data save to file>
-# test
-python3 ./run.py --mode test --fn <data save to file>
-# verify
-python3 ./run.py --mode verify --fn <data save to file>
-# plot transaction fee - private value
-python3 python3 ./utils/scatter.py --file <file name> --step <step number>
+python3 ./run.py --method PPO --mode train --cfg ./config/ppo.yaml
 ```

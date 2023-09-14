@@ -1,5 +1,6 @@
 import gym
 import numpy as np
+import torch
 from envs.DAGEnv import DAGEnv
 from agents.ppo import PPO
 from utils.fix_seed import fix_seed
@@ -14,15 +15,18 @@ class Trainer(object):
         self.cfgs = cfgs
         fix_seed(cfgs.seed)
 
-        self.env = gym.make('gym_dag_env-v0', max_agents_num=cfgs.max_agents_num,
+        self.env = gym.make('gym_dag_env-v0', 
+            fee_data_path=cfgs.fee_data_path, max_agents_num=cfgs.max_agents_num,
             lambd=cfgs.lambd, delta=cfgs.delta, b=cfgs.b, is_burn=cfgs.is_burn,
         )
-        self.agent = PPO(1, 1, cfgs.actor_lr, cfgs.critic_lr, cfgs.c1, 
-            cfgs.c2, cfgs.K_epochs, cfgs.gamma, cfgs.eps_clip,
+        self.agent = PPO(1, 1, cfgs.actor_lr, cfgs.critic_lr, cfgs.c1, cfgs.c2, 
+            cfgs.K_epochs, cfgs.gamma, cfgs.eps_clip, cfgs.std_init, cfgs.std_decay, cfgs.std_min
         )
 
     def training(self):
         state = self.env.reset()
+        state_list = []
+        action_list = []
         reward_list = []
         social_welfare_list = []
 
@@ -34,18 +38,39 @@ class Trainer(object):
                 action[i] = self.agent.select_action(state[i])
 
             next_state, reward, _, _ = self.env.step(action * state)
-            reward_list.extend(reward)
-            social_welfare_list.append(sum(reward))
             self.agent.buffer.rewards.extend(reward)
             state = next_state
+
+            if step % self.cfgs.test_freq == 0:
+                action = np.zeros_like(state)
+
+                for i in range(len(state)):
+                    action[i] = self.agent.select_action_test(state[i])
+
+                next_state, reward, _, _ = self.env.step(action * state)
+
+                state_list.extend(state)
+                action_list.extend(action)
+                reward_list.extend(reward)
+                social_welfare_list.append(sum(reward))
+                
+                state = next_state
+                np.save(f"./state_history.npy", np.array(state_list))
+                np.save(f"./action_history.npy", np.array(action_list))
+                np.save(f"./rewards_history.npy", np.array(reward_list))
+                np.save(f"./social_welfare_history.npy", np.array(social_welfare_list))
 
             if step % self.cfgs.update_freq == 0:
                 log('Update...')
                 self.agent.update()
 
+            if step % self.cfgs.std_decay_freq == 0:
+                self.agent.decay_action_std()
+                log(f'Decay action std to {self.agent.actor.std}')
+
             if step % self.cfgs.save_freq == 0:
                 log('Save...')
-                np.save(f"./rewards_history.npy", np.array(reward_list))
-                np.save(f"./social_welfare_history.npy", np.array(social_welfare_list))
+                torch.save(self.agent.actor.state_dict(), 'actor.pth')
+                torch.save(self.agent.critic.state_dict(), 'critic.pth')
 
             progress_bar.set_description(f"step: {step}, reward: {sum(reward)}")

@@ -3,7 +3,6 @@
 test/
 tmp/
 *.log
-*.pth
 backup/
 data/*.tsv.gz
 data/*.tsv
@@ -11,6 +10,7 @@ rewards/
 img/
 models/
 out/
+results/
 fee.pkl
 
 

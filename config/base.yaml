@@ -1,4 +1,5 @@
 seed: 3407
+fee_data_path: data/fee.npy
 max_agents_num: 100
 lambd: .6
 delta: 10

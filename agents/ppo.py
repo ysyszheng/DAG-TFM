@@ -6,34 +6,31 @@ from utils.rollout_buffer import RolloutBuffer
 from utils.log import log
 
 class Actor(nn.Module):
-    def __init__(self, state_dim, action_dim):
+    def __init__(self, state_dim, action_dim, std_init):
         super(Actor, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
+            nn.Linear(64, action_dim),
+            nn.Sigmoid(),
         )
-        self.mu_head = nn.Linear(64, action_dim)
-        self.sigma_head = nn.Linear(64, action_dim)
+        self.std = std_init
 
     def forward(self, s):
-        mu = torch.sigmoid(self.mu_head(self.net(s))) # todo: torch.sigmoid or F.sigmoid
-        sigma = F.softplus(self.sigma_head(self.net(s)))
-        dist = torch.distributions.Normal(mu, sigma)
+        mu = self.net(s)
+        dist = torch.distributions.Normal(mu, self.std)
         a = dist.sample().clamp(0, 1) # todo: clamp here is a good idea?
         log_prob = dist.log_prob(a)
         return a, log_prob
 
+    def act(self, s):
+        return self.net(s)
+
     def evaluate(self, s, a):
-        mu = torch.sigmoid(self.mu_head(self.net(s)))
-        sigma = F.softplus(self.sigma_head(self.net(s)))
-        # if has nan in mu
-        if torch.isnan(mu).any() or torch.isnan(sigma).any():
-            log(mu, sigma)
-            log(s)
-            log(a)
-        dist = torch.distributions.Normal(mu, sigma)
+        mu = self.net(s)
+        dist = torch.distributions.Normal(mu, self.std)
         log_prob = dist.log_prob(a)
         entropy = dist.entropy()
         return log_prob, entropy
@@ -56,8 +53,8 @@ class Critic(nn.Module):
 
 class PPO(object):
     def __init__(self, state_dim, action_dim, actor_lr, critic_lr, c1, c2, 
-                 K_epochs, gamma, eps_clip, device=torch.device('cpu')):
-        self.actor = Actor(state_dim, action_dim).to(device)
+                 K_epochs, gamma, eps_clip, std_init, std_decay, std_min, device=torch.device('cpu')):
+        self.actor = Actor(state_dim, action_dim, std_init).to(device)
         self.critic = Critic(state_dim).to(device)
         self.optimizer = torch.optim.Adam([
             {'params': self.actor.parameters(), 'lr': actor_lr},
@@ -69,7 +66,13 @@ class PPO(object):
         self.gamma = gamma
         self.eps_clip = eps_clip
         self.device = device
+        self.std_decay = std_decay
+        self.std_min = std_min
         self.buffer = RolloutBuffer()
+
+
+    def decay_action_std(self):
+        self.actor.std = max(self.actor.std * self.std_decay, self.std_min)
 
 
     def select_action(self, state):
@@ -80,6 +83,14 @@ class PPO(object):
         self.buffer.actions.append(a)
         self.buffer.logprobs.append(log_prob)
         self.buffer.state_values.append(sv)
+        return a.cpu().data.numpy().flatten()
+
+    def select_action_test(self, state):
+        # ! This function is only used for testing
+        # ! No exploration
+        state = torch.FloatTensor(state.reshape(1, -1)).to(self.device)
+        with torch.no_grad():
+            a = self.actor.act(state)
         return a.cpu().data.numpy().flatten()
 
     def update(self):
