@@ -3,9 +3,9 @@ import numpy as np
 import torch
 from envs.DAGEnv import DAGEnv
 from agents.ppo import PPO
-from utils.fix_seed import fix_seed
+from utils.utils import fix_seed
 from tqdm import tqdm
-from utils.log import log
+from utils.utils import log
 from easydict import EasyDict as edict
 
 
@@ -70,7 +70,7 @@ class Trainer(object):
 
             if step % self.cfgs.save_freq == 0:
                 log('Save...')
-                torch.save(self.agent.actor.state_dict(), 'actor.pth')
-                torch.save(self.agent.critic.state_dict(), 'critic.pth')
+                torch.save(self.agent.actor.state_dict(), self.cfgs.actor_path)
+                torch.save(self.agent.critic.state_dict(), self.cfgs.critic_path)
 
             progress_bar.set_description(f"step: {step}, reward: {sum(reward)}")

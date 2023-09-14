@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from utils.rollout_buffer import RolloutBuffer
-from utils.log import log
+from utils.utils import log
 
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, std_init):

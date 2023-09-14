@@ -22,8 +22,9 @@ Get fee data:
 python3 ./data/get_fee.py
 ```
 
-Fee distribution:
+Fee distribution $f(x)=ax^{-k}$:
 ![fee distribution](./assets/fee_distribution.png)
+
 
 Run
 -----

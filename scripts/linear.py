@@ -2,9 +2,9 @@ import gym
 import torch
 import numpy as np
 from envs.DAGEnv import DAGEnv
-from utils.fix_seed import fix_seed
+from utils.utils import fix_seed
 from tqdm import tqdm
-from utils.log import log
+from utils.utils import log
 import csv
 
 

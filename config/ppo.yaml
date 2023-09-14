@@ -13,3 +13,5 @@ std_decay_freq: 40
 update_freq: 40
 save_freq: 100
 test_freq: 40 # same as update_freq
+actor_path: ./models/ppo_actor.pth
+critic_path: ./models/ppo_critic.pth

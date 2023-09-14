@@ -14,7 +14,7 @@ from scipy.optimize import brentq, fsolve, root_scalar
 from gym import spaces
 import numpy as np
 import random
-from utils.log import log
+from utils.utils import log
 
 
 class DAGEnv(gym.Env):
