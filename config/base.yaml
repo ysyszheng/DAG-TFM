@@ -1,3 +1,8 @@
+results_path: ./results
+results_subdirs:
+  - models_path: ./results/models
+  - data_path: ./results/data
+  - img_path: ./results/img
 seed: 3407
 fee_data_path: data/fee.npy
 max_agents_num: 100

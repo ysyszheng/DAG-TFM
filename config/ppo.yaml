@@ -1,17 +1,23 @@
-steps: 100000
-gamma: 0.99
-actor_lr: .0003
-critic_lr: .001
-c1: .5
-c2: .01
-K_epochs: 10 # 80
-eps_clip: 0.2
-std_init: 1
-std_decay: .9
-std_min: .01
-std_decay_freq: 40
-update_freq: 40
-save_freq: 100
-test_freq: 40 # same as update_freq
-actor_path: ./models/ppo_actor.pth
-critic_path: ./models/ppo_critic.pth
+path:
+  actor_model_path: ./results/models/ppo_actor.pth
+  critic_model_path: ./results/models/ppo_critic.pth
+  log_path: ./results/data/ppo_log.csv
+  rewards_path: ./results/data/ppo_rewards.npy
+  sw_path: ./results/data/ppo_sw.csv
+model:
+  gamma: 0.99
+  actor_lr: .0003
+  critic_lr: .001
+  c1: .5
+  c2: .01
+  K_epochs: 10
+  eps_clip: 0.2
+  std_init: 1
+  std_decay: .9
+  std_min: .01
+train:
+  steps: 100000
+  std_decay_freq: 40
+  update_freq: 40
+eval:
+

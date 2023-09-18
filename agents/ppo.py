@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from utils.rollout_buffer import RolloutBuffer
 from utils.utils import log
 
+
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, std_init):
         super(Actor, self).__init__()
@@ -21,7 +22,7 @@ class Actor(nn.Module):
     def forward(self, s):
         mu = self.net(s)
         dist = torch.distributions.Normal(mu, self.std)
-        a = dist.sample().clamp(0, 1) # todo: clamp here is a good idea?
+        a = dist.sample().clamp(0, 1) # todo: clamp here is a good idea? & how backward works?
         log_prob = dist.log_prob(a)
         return a, log_prob
 

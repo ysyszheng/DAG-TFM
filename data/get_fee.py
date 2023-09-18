@@ -89,4 +89,17 @@ if __name__ == '__main__':
     # get_fee_each_month()
     # get_fee()
     # plot_fee_distribution()
-    fit_fee_distribution()
+    # fit_fee_distribution()
+    fee_data_file = os.path.join(DATA_FOLDER, 'fee.npy')
+    fee_data = np.load(fee_data_file)
+    fee_data_filtered = np.log(fee_data[fee_data > 0])
+    mean_value = np.mean(fee_data_filtered)
+    std_deviation = np.std(fee_data_filtered)
+    normalized_data = (fee_data_filtered - mean_value) / std_deviation
+
+    plt.hist(normalized_data, bins=50, alpha=0.7, density=True)
+    plt.xlabel('Fee Amount')
+    plt.ylabel('Frequency')
+    plt.title('Fee Distribution (Values)')
+    plt.grid(True)
+    plt.show()
