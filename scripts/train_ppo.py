@@ -3,9 +3,8 @@ import numpy as np
 import torch
 from envs.DAGEnv import DAGEnv
 from agents.ppo import PPO
-from utils.utils import fix_seed
+from utils.utils import fix_seed, log, normize, unormize
 from tqdm import tqdm
-from utils.utils import log
 from easydict import EasyDict as edict
 import csv
 
@@ -27,6 +26,7 @@ class Trainer(object):
 
     def training(self):
         state = self.env.reset()
+        state = normize(state, self.env.state_mean, self.env.state_std)
         reward_list = []
         sw_list = []
 
@@ -42,6 +42,9 @@ class Trainer(object):
             for i in range(len(state)):
                 action[i] = self.agent.select_action(state[i])
 
+            state = unormize(state, self.env.state_mean, self.env.state_std)
+            action = action * state
+
             next_state, reward, _, info = self.env.step(action)
             self.agent.buffer.rewards.extend(reward)
 
@@ -50,7 +53,7 @@ class Trainer(object):
                     writer = csv.writer(csvfile)
                     writer.writerow([int(step), s, a, a/s, r, p, self.env.num_miners])
             
-            state = next_state
+            state = normize(next_state, self.env.state_mean, self.env.state_std)
 
             if step % self.cfgs.train.update_freq == 0:
                 # * update models
@@ -61,10 +64,13 @@ class Trainer(object):
                 action = np.zeros_like(state)
 
                 for i in range(len(state)):
-                    action[i] = self.agent.select_action_test(state[i]) # ? no exploration in testing?
+                    action[i] = self.agent.select_action_without_exploration(state[i]) # ? no exploration in testing?
+
+                state = unormize(state, self.env.state_mean, self.env.state_std)
+                action = action * state
 
                 next_state, reward, _, info = self.env.step(action)
-                state = next_state
+                state = normize(next_state, self.env.state_mean, self.env.state_std)
 
                 # * print network gradient
                 log('Print network gradient...')

@@ -33,8 +33,7 @@ if __name__ == '__main__':
     shutil.copy(BASE_CONFIGS_PATH, cfgs.results_path)
     shutil.copy(args.cfg, cfgs.results_path)
     for subdir in cfgs.results_subdirs:
-         for key, dir_path in subdir.items():
-            os.makedirs(dir_path, exist_ok=True)
+        os.makedirs(subdir, exist_ok=True)
 
     if args.mode == 'train':
         if args.method == 'DDPG':

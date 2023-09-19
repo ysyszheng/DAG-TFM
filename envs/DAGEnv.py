@@ -43,6 +43,8 @@ class DAGEnv(gym.Env):
             low=0, high=np.inf, shape=(max_agents_num,), dtype=np.float32)
 
         self.fee_list = np.load(fee_data_path)
+        self.state_mean = np.mean(self.fee_list)
+        self.state_std = np.std(self.fee_list)
 
     def f(self, p):
         assert np.all(p >= 0 and p <= 1)

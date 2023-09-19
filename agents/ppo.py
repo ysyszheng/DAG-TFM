@@ -9,14 +9,14 @@ from utils.utils import log
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, std_init):
         super(Actor, self).__init__()
-        # ? Need non-linear transformation for input?
+        # ? Need non-linear transformation for input or not
         self.net = nn.Sequential(
             nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
             nn.Linear(64, action_dim),
-            nn.Softplus(),
+            nn.Sigmoid(),
         )
         self.std = std_init
 
@@ -27,7 +27,7 @@ class Actor(nn.Module):
         log_prob = dist.log_prob(a)
         return a, log_prob
 
-    def act(self, s):
+    def act_without_exploration(self, s):
         return self.net(s)
 
     def evaluate(self, s, a):
@@ -87,17 +87,17 @@ class PPO(object):
         self.buffer.state_values.append(sv)
         return a.cpu().data.numpy().flatten()
 
-    def select_action_test(self, state):
+    def select_action_without_exploration(self, state):
         # ! This function is only used for testing
         # ! No exploration
         state = torch.FloatTensor(state.reshape(1, -1)).to(self.device)
         with torch.no_grad():
-            a = self.actor.act(state)
+            a = self.actor.act_without_exploration(state)
         return a.cpu().data.numpy().flatten()
 
     def update(self):
         rewards = torch.tensor(self.buffer.rewards, dtype=torch.float32).to(self.device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7) # ? normalize rewards or not
         rewards = rewards.reshape(-1, 1)
         old_states = torch.stack(self.buffer.states, dim=0).detach().to(self.device)
         old_actions = torch.stack(self.buffer.actions, dim=0).detach().to(self.device)

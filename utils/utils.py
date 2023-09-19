@@ -25,5 +25,13 @@ def log(*args):
     print(colored_msg, *args)
 
 
+def normize(x, mean, std):
+    return (x - mean) / std
+
+
+def unormize(x, mean, std):
+    return x * std + mean
+
+
 if __name__ == '__main__':
     log('hello world')
