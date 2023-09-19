@@ -23,11 +23,13 @@ class DAGEnv(gym.Env):
                  max_agents_num,
                  lambd,
                  delta,
+                 a,
                  b,
                  is_burn=False):
         self.max_agents_num = max_agents_num
         self.lambd = lambd
         self.delta = delta
+        self.a = a
         self.b = b
         self.is_burn = is_burn
         self.eps = 1e-8
@@ -118,7 +120,9 @@ class DAGEnv(gym.Env):
         return optim_action
 
     def calculate_probabilities(self, actions: np.ndarray) -> np.ndarray:
-        zero_indices = np.where(actions == 0)[0]
+        # * probability of being included in the block
+        # * if action <= 0, then probability = 0
+        zero_indices = np.where(actions <= 0)[0]
         actions_without_zero = np.delete(actions, zero_indices)
 
         if len(actions_without_zero) <= self.b:
@@ -171,7 +175,7 @@ class DAGEnv(gym.Env):
             p[l] = self.invf_with_clip(c_k_max/(v[l]))
 
         for i in range(self.num_agents):
-            if actions[i] == 0:
+            if actions[i] <= 0:
                 probabilities[i] = 0
             else:
                 idx = np.where(actions[i] == v)[0][0]
@@ -181,7 +185,7 @@ class DAGEnv(gym.Env):
     def calculate_rewards(self, actions):
         rewards = np.zeros(self.num_agents)
         if self.is_burn:
-            probabilities = self.calculate_probabilities(np.log(1+actions))
+            probabilities = self.calculate_probabilities(self.a*np.log(1+actions/self.a))
         else:
             probabilities = self.calculate_probabilities(actions)
 
@@ -190,11 +194,8 @@ class DAGEnv(gym.Env):
             offer_price = actions[i]
             probability = probabilities[i]
 
-            if offer_price < private_value:
-                rewards[i] =  (1 - (1 - probability) ** self.num_miners) * \
-                    (private_value - offer_price)
-            else:
-                rewards[i] = 0
+            rewards[i] =  (1 - (1 - probability) ** self.num_miners) * \
+                (private_value - offer_price)
 
         return rewards, probabilities
 

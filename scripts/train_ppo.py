@@ -18,10 +18,11 @@ class Trainer(object):
 
         self.env = gym.make('gym_dag_env-v0', 
             fee_data_path=cfgs.fee_data_path, max_agents_num=cfgs.max_agents_num,
-            lambd=cfgs.lambd, delta=cfgs.delta, b=cfgs.b, is_burn=cfgs.is_burn,
+            lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
         )
-        self.agent = PPO(1, 1, cfgs.model.actor_lr, cfgs.model.critic_lr, cfgs.model.c1, cfgs.model.c2, 
-            cfgs.model.K_epochs, cfgs.model.gamma, cfgs.model.eps_clip, cfgs.model.std_init, cfgs.model.std_decay, cfgs.model.std_min
+        self.agent = PPO(1, 1, cfgs.model.actor_lr, cfgs.model.critic_lr, 
+            cfgs.model.c1, cfgs.model.c2, cfgs.model.K_epochs, cfgs.model.gamma, 
+            cfgs.model.eps_clip, cfgs.model.std_init, cfgs.model.std_decay, cfgs.model.std_min
         )
 
     def training(self):
@@ -41,8 +42,14 @@ class Trainer(object):
             for i in range(len(state)):
                 action[i] = self.agent.select_action(state[i])
 
-            next_state, reward, _, _ = self.env.step(action * state)
+            next_state, reward, _, info = self.env.step(action)
             self.agent.buffer.rewards.extend(reward)
+
+            with open(self.cfgs.path.log_path, 'a', newline='') as csvfile:
+                for s, a, r, p in zip(state, action, reward, info['probabilities']):
+                    writer = csv.writer(csvfile)
+                    writer.writerow([int(step), s, a, a/s, r, p, self.env.num_miners])
+            
             state = next_state
 
             if step % self.cfgs.train.update_freq == 0:
@@ -54,16 +61,19 @@ class Trainer(object):
                 action = np.zeros_like(state)
 
                 for i in range(len(state)):
-                    action[i] = self.agent.select_action_test(state[i])
+                    action[i] = self.agent.select_action_test(state[i]) # ? no exploration in testing?
 
-                next_state, reward, _, info = self.env.step(action * state)
-                
-                with open(self.cfgs.path.log_path, 'a', newline='') as csvfile:
-                    for s, a, r, p in zip(state, action * state, reward, info['probabilities']):
-                        writer = csv.writer(csvfile)
-                        writer.writerow([step, s, a, a/s, r, p, self.env.num_miners])
-
+                next_state, reward, _, info = self.env.step(action)
                 state = next_state
+
+                # * print network gradient
+                log('Print network gradient...')
+                for name, param in self.agent.actor.named_parameters():
+                    if param.requires_grad:
+                        log(f'Actor: {name}, gradient: {param.grad}')
+                for name, param in self.agent.critic.named_parameters():
+                    if param.requires_grad:
+                        log(f'Critic: {name}, gradient: {param.grad}')
 
                 # * save rewards and social warfare (all data during training, not only test)
                 reward_list.extend(reward)

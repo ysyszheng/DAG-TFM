@@ -4,7 +4,7 @@ Log-revenue Mechanism: Improving DAG Throughput via Transaction Fee Design
 Environment
 -----
 
-In our DAG enviroment ([`DAGEnv`](./envs/DAGEnv.py)), episode step is 1, so `done` flag is always True.
+In our DAG enviroment ([`DAGEnv`](./envs/DAGEnv.py)), episode step is 1, so `done` flag is always True, and $\hat{A}=r-V(s)$.
 
 Config
 -----
@@ -25,10 +25,10 @@ python3 ./data/get_fee.py
 Fee distribution $f(x)=ax^{-k}$:
 ![fee distribution](./assets/fee_distribution.png)
 
-
 Run
 -----
 
 ```bash
+# Train PPO
 python3 ./run.py --method PPO --mode train --cfg ./config/ppo.yaml
 ```

@@ -9,20 +9,21 @@ from utils.utils import log
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, std_init):
         super(Actor, self).__init__()
+        # ? Need non-linear transformation for input?
         self.net = nn.Sequential(
             nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
             nn.Linear(64, action_dim),
-            nn.Sigmoid(),
+            nn.Softplus(),
         )
         self.std = std_init
 
     def forward(self, s):
         mu = self.net(s)
         dist = torch.distributions.Normal(mu, self.std)
-        a = dist.sample().clamp(0, 1) # todo: clamp here is a good idea? & how backward works?
+        a = dist.sample()
         log_prob = dist.log_prob(a)
         return a, log_prob
 

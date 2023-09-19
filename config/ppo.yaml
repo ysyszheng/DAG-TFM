@@ -3,7 +3,7 @@ path:
   critic_model_path: ./results/models/ppo_critic.pth
   log_path: ./results/data/ppo_log.csv
   rewards_path: ./results/data/ppo_rewards.npy
-  sw_path: ./results/data/ppo_sw.csv
+  sw_path: ./results/data/ppo_sw.npy
 model:
   gamma: 0.99
   actor_lr: .0003
@@ -12,12 +12,12 @@ model:
   c2: .01
   K_epochs: 10
   eps_clip: 0.2
-  std_init: 1
+  std_init: 500
   std_decay: .9
-  std_min: .01
+  std_min: 10 # 1sigma: 0.6826, 2simga:0.9544, 3simga: 0.9974
 train:
   steps: 100000
   std_decay_freq: 40
-  update_freq: 40
+  update_freq: 40 # update_freq = test_freq = save_models_freq = print_gradients_freq
 eval:
 
