@@ -5,7 +5,7 @@ path:
   rewards_path: ./results/data/ppo_rewards.npy
   sw_path: ./results/data/ppo_sw.npy
 model:
-  gamma: 0.99
+  gamma: 0.99 # not used, because done is always True
   actor_lr: .0003
   critic_lr: .001
   c1: .5
@@ -13,11 +13,15 @@ model:
   K_epochs: 1
   eps_clip: 0.2
   std_init: .4
-  std_decay: .99
-  std_min: .05 # 1sigma: 0.6826, 2simga:0.9544, 3simga: 0.9974
+  std_decay: .9
+  std_min: .01 # 1sigma: 0.6826, 2simga:0.9544, 3simga: 0.9974
 train:
   steps: 100000
-  std_decay_freq: 240
+  std_decay_freq: 120
   update_freq: 40 # update_freq = test_freq = save_models_freq = print_gradients_freq
+test:
+  steps: 10
 eval:
-
+  steps: 10
+  idx: 0
+  cnt: 100

@@ -81,7 +81,7 @@ class Trainer(object):
                     if param.requires_grad:
                         log(f'Critic: {name}, gradient: {param.grad}')
 
-                # * save rewards and social warfare (all data during training, not only test)
+                # * save rewards and social warfare
                 reward_list.extend(reward)
                 sw_list.append(sum(reward))
                 

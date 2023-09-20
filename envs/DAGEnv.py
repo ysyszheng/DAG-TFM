@@ -101,11 +101,26 @@ class DAGEnv(gym.Env):
         return self.state
 
     def step(self, actions):
+        # * calculate rewards and probabilities
         rewards, probabilities = self.calculate_rewards(actions)
+
+        # * calculate throughput and total private value
+        txs = list(range(self.num_agents)) # * give each agent a unique id
+        included_txs = []
+        for _ in range(self.num_miners):
+            selected_indices = random.choices(txs, weights=probabilities, k=self.b) # ? sample probablistically is right
+            included_txs.extend(selected_indices)
+
+        unique_txs = set(included_txs)
+        num_unique_txs = len(unique_txs)
+        total_private_value = sum(self.state[tx_id] for tx_id in unique_txs)
+
+        # * update state
         done = True
         self.reset()
 
-        return self.state, rewards, done, {"probabilities": probabilities}
+        return self.state, rewards, done, \
+            {"probabilities": probabilities, "throughput": num_unique_txs, "total_private_value": total_private_value}
 
     def find_optim_action(self, actions, idx=0, cnt=100):
         assert idx >= 0 and idx < self.num_agents
@@ -115,7 +130,7 @@ class DAGEnv(gym.Env):
         for a in np.linspace(0, s, cnt):
             actions[idx] = a
             rewards, _ = self.calculate_rewards(actions)
-            print(a, ',', rewards[idx])
+            # print(a, ',', rewards[idx])
             if rewards[idx] > max_reward:
                 max_reward = rewards[idx]
                 optim_action = a

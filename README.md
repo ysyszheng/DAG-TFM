@@ -29,7 +29,15 @@ mean: 7167.122512974324, std: 38358.98737426391
 Run
 -----
 
+* Train: train function approximator
+* Test: test throughputs
+* Eval: evaluate the equilibrium
+
 ```bash
 # Train PPO
 python3 ./run.py --method PPO --mode train --cfg ./config/ppo.yaml
+# Test PPO throughputs
+python3 ./run.py --method PPO --mode test --cfg ./config/ppo.yaml
+# Eval PPO equilibrium
+python3 ./run.py --method PPO --mode eval --cfg ./config/ppo.yaml
 ```
