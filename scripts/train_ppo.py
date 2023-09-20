@@ -64,7 +64,7 @@ class Trainer(object):
                 action = np.zeros_like(state)
 
                 for i in range(len(state)):
-                    action[i] = self.agent.select_action_without_exploration(state[i]) # ? no exploration in testing?
+                    action[i] = self.agent.select_action_without_exploration(state[i]) # ? no exploration in testing, no grad
 
                 state = unormize(state, self.env.state_mean, self.env.state_std)
                 action = action * state
@@ -73,7 +73,7 @@ class Trainer(object):
                 state = normize(next_state, self.env.state_mean, self.env.state_std)
 
                 # * print network gradient
-                log('Print network gradient...')
+                log('Print network gradient...') # ! what is the gradient of the network?
                 for name, param in self.agent.actor.named_parameters():
                     if param.requires_grad:
                         log(f'Actor: {name}, gradient: {param.grad}')

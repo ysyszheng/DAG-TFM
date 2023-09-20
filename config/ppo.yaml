@@ -10,14 +10,14 @@ model:
   critic_lr: .001
   c1: .5
   c2: .01
-  K_epochs: 10
+  K_epochs: 1
   eps_clip: 0.2
   std_init: .4
-  std_decay: .9
+  std_decay: .99
   std_min: .05 # 1sigma: 0.6826, 2simga:0.9544, 3simga: 0.9974
 train:
   steps: 100000
-  std_decay_freq: 120
+  std_decay_freq: 240
   update_freq: 40 # update_freq = test_freq = save_models_freq = print_gradients_freq
 eval:
 

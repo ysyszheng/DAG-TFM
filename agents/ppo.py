@@ -16,7 +16,7 @@ class Actor(nn.Module):
             nn.Linear(64, 64),
             nn.ReLU(),
             nn.Linear(64, action_dim),
-            nn.Sigmoid(),
+            nn.Sigmoid(), # ! Sigmoid make gradient vanish, try tanh
         )
         self.std = std_init
 

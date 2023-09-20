@@ -22,7 +22,8 @@ Get fee data:
 python3 ./data/get_fee.py
 ```
 
-Fee distribution $f(x)=ax^{-k}$:
+Fee distribution:
+mean: 7167.122512974324, std: 38358.98737426391
 ![fee distribution](./assets/fee_distribution.png)
 
 Run

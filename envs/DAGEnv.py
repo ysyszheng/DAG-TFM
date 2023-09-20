@@ -186,10 +186,12 @@ class DAGEnv(gym.Env):
 
     def calculate_rewards(self, actions):
         rewards = np.zeros(self.num_agents)
+
         if self.is_burn:
-            probabilities = self.calculate_probabilities(self.a*np.log(1+actions/self.a))
-        else:
-            probabilities = self.calculate_probabilities(actions)
+            actions = self.a * np.log(1 + actions / self.a)
+            actions[np.isnan(actions)] = 0
+
+        probabilities = self.calculate_probabilities(actions)
 
         for i in range(self.num_agents):
             private_value = self.state[i]

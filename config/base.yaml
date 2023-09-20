@@ -10,5 +10,5 @@ max_agents_num: 100
 lambd: .6
 delta: 10
 b: 20
-is_burn: False
+is_burn: True
 a: 1 # * used in a * log(1 + x/a)
