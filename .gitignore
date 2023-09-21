@@ -7,7 +7,7 @@ log/
 backup/
 data/*.tsv.gz
 data/*.tsv
-rewards/
+rewards*/
 img/
 models/
 out/

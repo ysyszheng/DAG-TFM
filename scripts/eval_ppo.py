@@ -18,11 +18,12 @@ class Evaluator(object):
             fee_data_path=cfgs.fee_data_path, max_agents_num=cfgs.max_agents_num,
             lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
         )
-        self.agent = PPO(1, 1, cfgs.actor_lr, cfgs.critic_lr, cfgs.c1, cfgs.c2, 
-            cfgs.K_epochs, cfgs.gamma, cfgs.eps_clip, cfgs.std_init, cfgs.std_decay, cfgs.std_min
+        self.agent = PPO(1, 1, cfgs.model.actor_lr, cfgs.model.critic_lr, 
+            cfgs.model.c1, cfgs.model.c2, cfgs.model.K_epochs, cfgs.model.gamma, 
+            cfgs.model.eps_clip, cfgs.model.std_init, cfgs.model.std_decay, cfgs.model.std_min
         )
-        self.agent.actor.load_state_dict(torch.load(cfgs.actor_model_path))
-        self.agent.critic.load_state_dict(torch.load(cfgs.critic_model_path))
+        self.agent.actor.load_state_dict(torch.load(cfgs.path.actor_model_path))
+        self.agent.critic.load_state_dict(torch.load(cfgs.path.critic_model_path))
 
     def evaluating(self):
         state = self.env.reset()
@@ -30,7 +31,7 @@ class Evaluator(object):
         specific_action_list = []
         optimal_action_list = []
         
-        progress_bar = tqdm(range(1, self.cfgs.evaluation.steps+1))
+        progress_bar = tqdm(range(1, self.cfgs.eval.steps+1))
         for _ in progress_bar:
             action = np.zeros_like(state)
 
@@ -40,15 +41,17 @@ class Evaluator(object):
             state = unormize(state, self.env.state_mean, self.env.state_std)
             action = action * state
 
-            optimal_action = self.env.find_optim_action(action=action, 
+            optimal_action = self.env.find_optim_action(actions=action, 
                     idx=self.cfgs.eval.idx, cnt=self.cfgs.eval.cnt)
 
             specific_action = action[self.cfgs.eval.idx]
             specific_action_list.append(specific_action)
             optimal_action_list.append(optimal_action)
             
-            next_state, _, _, _ = self.env.step(optimal_action)
+            next_state, _, _, _ = self.env.step(action)
             state = normize(next_state, self.env.state_mean, self.env.state_std)
+
+            progress_bar.set_description(f'Optimal Action: {optimal_action}, Specific Action: {specific_action}, Relative Deviation: {np.abs(specific_action - optimal_action) / optimal_action}')
 
         relative_deviation = np.abs(np.array(specific_action_list) - \
                 np.array(optimal_action_list)) / np.array(optimal_action_list)

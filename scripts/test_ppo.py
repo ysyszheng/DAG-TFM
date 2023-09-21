@@ -18,12 +18,12 @@ class Tester(object):
             fee_data_path=cfgs.fee_data_path, max_agents_num=cfgs.max_agents_num,
             lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
         )
-        self.agent = PPO(1, 1, cfgs.actor_lr, cfgs.critic_lr, cfgs.c1, cfgs.c2, 
-            cfgs.K_epochs, cfgs.gamma, cfgs.eps_clip, cfgs.std_init, cfgs.std_decay, cfgs.std_min
+        self.agent = PPO(1, 1, cfgs.model.actor_lr, cfgs.model.critic_lr, 
+            cfgs.model.c1, cfgs.model.c2, cfgs.model.K_epochs, cfgs.model.gamma, 
+            cfgs.model.eps_clip, cfgs.model.std_init, cfgs.model.std_decay, cfgs.model.std_min
         )
-
-        self.agent.actor.load_state_dict(torch.load(cfgs.actor_path))
-        self.agent.critic.load_state_dict(torch.load(cfgs.critic_path))
+        self.agent.actor.load_state_dict(torch.load(cfgs.path.actor_model_path))
+        self.agent.critic.load_state_dict(torch.load(cfgs.path.critic_model_path))
 
     def testing(self):
         state = self.env.reset()
@@ -50,4 +50,4 @@ class Tester(object):
 
             progress_bar.set_description(f'Throughput: {info["throughput"]:.2f} | Total Private Value: {info["total_private_value"]:.2f}')
 
-        log(f'Throughput: {np.mean(throughput_list):.2f} | Total Private Value: {np.mean(total_private_value_list):.2f}')
+        log(f'Mean throughput: {np.mean(throughput_list):.2f}')

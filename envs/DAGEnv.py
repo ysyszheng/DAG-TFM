@@ -105,10 +105,10 @@ class DAGEnv(gym.Env):
         rewards, probabilities = self.calculate_rewards(actions)
 
         # * calculate throughput and total private value
-        txs = list(range(self.num_agents)) # * give each agent a unique id
         included_txs = []
         for _ in range(self.num_miners):
-            selected_indices = random.choices(txs, weights=probabilities, k=self.b) # ? sample probablistically is right
+            selected_indices = np.random.choice(self.num_agents, self.b, 
+                    replace=False, p=probabilities / np.sum(probabilities)) # ? sample probablistically is right
             included_txs.extend(selected_indices)
 
         unique_txs = set(included_txs)
@@ -204,7 +204,8 @@ class DAGEnv(gym.Env):
 
         if self.is_burn:
             actions = self.a * np.log(1 + actions / self.a)
-            actions[np.isnan(actions)] = 0
+            nan_mask = np.isnan(actions)
+            actions = np.where(nan_mask, 0, actions)
 
         probabilities = self.calculate_probabilities(actions)
 

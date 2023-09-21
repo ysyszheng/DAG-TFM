@@ -29,27 +29,28 @@ if __name__ == '__main__':
     cfgs.method = args.method if args.method is not None else None
     cfgs.mode = args.mode if args.mode is not None else None
 
-    os.makedirs(cfgs.results_path, exist_ok=True)
-    shutil.copy(BASE_CONFIGS_PATH, cfgs.results_path)
-    shutil.copy(args.cfg, cfgs.results_path)
-    for subdir in cfgs.results_subdirs:
-        os.makedirs(subdir, exist_ok=True)
 
     if args.mode == 'train':
+        os.makedirs(cfgs.results_path, exist_ok=True)
+        shutil.copy(BASE_CONFIGS_PATH, f'{cfgs.results_path}.backup')
+        shutil.copy(args.cfg, f'{cfgs.results_path}.backup')
+        for subdir in cfgs.results_subdirs:
+            os.makedirs(subdir, exist_ok=True)
+
         if args.method == 'DDPG':
             from scripts.train_ddpg import Trainer
         elif args.method == 'PPO':
             from scripts.train_ppo import Trainer
         trainer = Trainer(cfgs)
         trainer.training()
-    if args.mode == 'test':
+    elif args.mode == 'test':
         if args.method == 'DDPG':
             from scripts.test_ddpg import Tester
         elif args.method == 'PPO':
             from scripts.test_ppo import Tester
         tester = Tester(cfgs)
         tester.testing()
-    if args.mode == 'eval':
+    elif args.mode == 'eval':
         if args.method == 'DDPG':
             from scripts.eval_ddpg import Evaluator
         elif args.method == 'PPO':
