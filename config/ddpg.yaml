@@ -1,15 +1,26 @@
-steps: 3000
-test_steps: 10
-save_freq: 50
-batch_size: 64
-memory_size: 100000
-gamma: 0.99
-lr: .001
-tau: 0.001
-exp_std: 1
-verify_std: 0.01
-iterations: 1
-epsilon_min: 0.1
-epsilon_decay: 0.999
-optim_idx: 0
-optim_cnt: 100
+path:
+  actor_model_path: ./results/models/ddpg_actor.pth
+  critic_model_path: ./results/models/ddpg_critic.pth
+  log_path: ./results/data/ddpg_log.csv
+  rewards_path: ./results/data/ddpg_rewards.npy
+  sw_path: ./results/data/ddpg_sw.npy
+model:
+  gamma: 0.99
+  actor_lr: .0001
+  critic_lr: .001
+  tau: 0.001
+  batch_size: 64
+  std: 0.2
+  memory_size: 20000
+  epsilon_min: 0.05
+  epsilon_decay: 0.999
+  iterations: 1
+train:
+  steps: 3000
+  save_freq: 50
+test:
+  steps: 100
+eval:
+  steps: 20
+  idx: 0
+  cnt: 100

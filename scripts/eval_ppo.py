@@ -30,6 +30,8 @@ class Evaluator(object):
         state = normize(state, self.env.state_mean, self.env.state_std)
         specific_action_list = []
         optimal_action_list = []
+        specific_reward_list = []
+        optimal_reward_list = []
         
         progress_bar = tqdm(range(1, self.cfgs.eval.steps+1))
         for _ in progress_bar:
@@ -40,18 +42,22 @@ class Evaluator(object):
 
             state = unormize(state, self.env.state_mean, self.env.state_std)
             action = action * state
+            specific_action = action[self.cfgs.eval.idx]
 
-            optimal_action = self.env.find_optim_action(actions=action, 
+            optimal_action, max_reward = self.env.find_optim_action(actions=action, 
                     idx=self.cfgs.eval.idx, cnt=self.cfgs.eval.cnt)
 
-            specific_action = action[self.cfgs.eval.idx]
             specific_action_list.append(specific_action)
             optimal_action_list.append(optimal_action)
             
-            next_state, _, _, _ = self.env.step(action)
+            next_state, reward, _, _ = self.env.step(action)
             state = normize(next_state, self.env.state_mean, self.env.state_std)
 
-            progress_bar.set_description(f'Optimal Action: {optimal_action}, Specific Action: {specific_action}, Relative Deviation: {np.abs(specific_action - optimal_action) / optimal_action}')
+            specific_reward = reward[self.cfgs.eval.idx]
+            specific_reward_list.append(specific_reward)
+            optimal_reward_list.append(max_reward)
+
+            progress_bar.set_description(f'a_opt: {optimal_action:.3f}, a: {specific_action:.3f}, r_opt: {max_reward:.3f}, r:{specific_reward:.3f}, Deviation: {np.abs(specific_reward - max_reward) / max_reward:.5f}')
 
         relative_deviation = np.abs(np.array(specific_action_list) - \
                 np.array(optimal_action_list)) / np.array(optimal_action_list)

@@ -32,8 +32,8 @@ if __name__ == '__main__':
 
     if args.mode == 'train':
         os.makedirs(cfgs.results_path, exist_ok=True)
-        shutil.copy(BASE_CONFIGS_PATH, f'{cfgs.results_path}.backup')
-        shutil.copy(args.cfg, f'{cfgs.results_path}.backup')
+        shutil.copy(BASE_CONFIGS_PATH, f'{cfgs.results_path}/{args.method}_base.backup')
+        shutil.copy(args.cfg, f'{cfgs.results_path}/{args.method}_cfg.backup')
         for subdir in cfgs.results_subdirs:
             os.makedirs(subdir, exist_ok=True)
 

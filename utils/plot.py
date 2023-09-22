@@ -60,11 +60,18 @@ def plot_tx_fee_vs_private_value(csv_file_path, step):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_path', type=str, default=None, help='File Path')
+    parser.add_argument('--graph', type=str, default=None, help='Graph')
     parser.add_argument('--window_size', type=int, default=100, help='Window Size')
     parser.add_argument('--step', type=int, default=None, help='Step')
     args = parser.parse_args()
 
-    plot_sw(args.file_path, args.window_size)
-    # plot_reward(args.file_path)
-    # plot_incentive_awarness(args.file_path)
-    # plot_tx_fee_vs_private_value(args.file_path, args.step)
+    if args.graph == 'sw':
+        plot_sw(args.file_path, args.window_size)
+    elif args.graph == 'reward':
+        plot_reward(args.file_path)
+    elif args.graph == 'incentive_awareness':
+        plot_incentive_awarness(args.file_path)
+    elif args.graph == 'tx_fee_vs_private_value':
+        plot_tx_fee_vs_private_value(args.file_path, args.step)
+    else:
+        raise NotImplementedError

@@ -61,30 +61,31 @@ class Trainer(object):
                 self.agent.update()
                 
                 # * test models
-                action = np.zeros_like(state)
+                for _ in range(self.cfgs.train.test_steps):
+                    action = np.zeros_like(state)
 
-                for i in range(len(state)):
-                    action[i] = self.agent.select_action_without_exploration(state[i]) # ? no exploration in testing, no grad
+                    for i in range(len(state)):
+                        action[i] = self.agent.select_action_without_exploration(state[i]) # ? no exploration in testing, no grad
 
-                state = unormize(state, self.env.state_mean, self.env.state_std)
-                action = action * state
+                    state = unormize(state, self.env.state_mean, self.env.state_std)
+                    action = action * state
 
-                next_state, reward, _, info = self.env.step(action)
-                state = normize(next_state, self.env.state_mean, self.env.state_std)
+                    next_state, reward, _, _ = self.env.step(action)
+                    state = normize(next_state, self.env.state_mean, self.env.state_std)
+
+                    # * save rewards and social warfare
+                    reward_list.extend(reward)
+                    sw_list.append(sum(reward))
 
                 # * print network gradient
-                log('Print network gradient...') # ! what is the gradient of the network?
-                for name, param in self.agent.actor.named_parameters():
-                    if param.requires_grad:
-                        log(f'Actor: {name}, gradient: {param.grad}')
-                for name, param in self.agent.critic.named_parameters():
-                    if param.requires_grad:
-                        log(f'Critic: {name}, gradient: {param.grad}')
+                # log('Print network gradient...')
+                # for name, param in self.agent.actor.named_parameters():
+                #     if param.requires_grad:
+                #         log(f'Actor: {name}, gradient: {param.grad}')
+                # for name, param in self.agent.critic.named_parameters():
+                #     if param.requires_grad:
+                #         log(f'Critic: {name}, gradient: {param.grad}')
 
-                # * save rewards and social warfare
-                reward_list.extend(reward)
-                sw_list.append(sum(reward))
-                
                 np.save(self.cfgs.path.rewards_path, np.array(reward_list))
                 np.save(self.cfgs.path.sw_path, np.array(sw_list))
 
@@ -97,4 +98,4 @@ class Trainer(object):
                 self.agent.decay_action_std()
                 log(f'Decay action std to {self.agent.actor.std}')
 
-            progress_bar.set_description(f"step: {step}, reward: {sum(reward)}")
+            progress_bar.set_description(f"step: {step}, sw: {sum(reward)}")

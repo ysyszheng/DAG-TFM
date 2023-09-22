@@ -106,9 +106,10 @@ class DAGEnv(gym.Env):
 
         # * calculate throughput and total private value
         included_txs = []
+        included_txs_num = self.b if np.count_nonzero(probabilities) >= self.b else np.count_nonzero(probabilities)
         for _ in range(self.num_miners):
-            selected_indices = np.random.choice(self.num_agents, self.b, 
-                    replace=False, p=probabilities / np.sum(probabilities)) # ? sample probablistically is right
+            selected_indices = np.random.choice(self.num_agents, included_txs_num, 
+                    replace=False, p=(probabilities) / np.sum(probabilities)) # ? sample probablistically is right
             included_txs.extend(selected_indices)
 
         unique_txs = set(included_txs)
@@ -127,14 +128,15 @@ class DAGEnv(gym.Env):
         s = self.state[idx]
         max_reward = -1
         optim_action = 0
+        action_copy = actions.copy()
         for a in np.linspace(0, s, cnt):
-            actions[idx] = a
-            rewards, _ = self.calculate_rewards(actions)
+            action_copy[idx] = a
+            rewards, _ = self.calculate_rewards(action_copy)
             # print(a, ',', rewards[idx])
             if rewards[idx] > max_reward:
                 max_reward = rewards[idx]
                 optim_action = a
-        return optim_action
+        return optim_action, max_reward
 
     def calculate_probabilities(self, actions: np.ndarray) -> np.ndarray:
         # * probability of being included in the block
@@ -203,11 +205,10 @@ class DAGEnv(gym.Env):
         rewards = np.zeros(self.num_agents)
 
         if self.is_burn:
-            actions = self.a * np.log(1 + actions / self.a)
-            nan_mask = np.isnan(actions)
-            actions = np.where(nan_mask, 0, actions)
-
-        probabilities = self.calculate_probabilities(actions)
+            actions_burn = np.where(actions >= 0, self.a * np.log(1 + actions / self.a), actions)
+            probabilities = self.calculate_probabilities(actions_burn)
+        else:
+            probabilities = self.calculate_probabilities(actions)
 
         for i in range(self.num_agents):
             private_value = self.state[i]

@@ -6,10 +6,14 @@ Environment
 
 In our DAG enviroment ([`DAGEnv`](./envs/DAGEnv.py)), episode step is 1, so `done` flag is always True, and $\hat{A}=r-V(s)$.
 
+The DAG environment uses the theorems 6 in _Inclusive Block Chain Protocols_ to calculate the transaction inclusion probability.
+
+![DAGEnv](./assets/FC15.png)
+
 Config
 -----
 
-Base config is in [`./config/base.yaml`](./config/base.yaml). Part of the config parameters are from _TIPS: Transaction Inclusion Protocol With Signaling in DAG-Based Blockchain_
+Base config is in [`./config/base.yaml`](./config/base.yaml). Part of the config parameters are from _TIPS: Transaction Inclusion Protocol With Signaling in DAG-Based Blockchain_.
 
 Data
 -----
@@ -34,10 +38,10 @@ Run
 * Eval: evaluate the equilibrium
 
 ```bash
-# Train PPO
-python3 ./run.py --method PPO --mode train --cfg ./config/ppo.yaml
-# Test PPO throughputs
-python3 ./run.py --method PPO --mode test --cfg ./config/ppo.yaml
-# Eval PPO equilibrium
-python3 ./run.py --method PPO --mode eval --cfg ./config/ppo.yaml
+# Train Agent
+python3 ./run.py --method [DDPG/PPO] --mode train --cfg ./config/[ddpg/ppo].yaml
+# Test throughputs
+python3 ./run.py --method [DDPG/PPO] --mode test --cfg ./config/[ddpg/ppo].yaml
+# Eval equilibrium
+python3 ./run.py --method [DDPG/PPO] --mode eval --cfg ./config/[ddpg/ppo].yaml
 ```
