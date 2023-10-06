@@ -28,6 +28,7 @@ class Tester(object):
         state = self.env.reset()
         state = normize(state, self.env.state_mean, self.env.state_std)
         throughput_list = []
+        rate_list = []
         total_private_value_list = []
 
         progress_bar = tqdm(range(1, self.cfgs.test.steps+1))
@@ -45,9 +46,12 @@ class Tester(object):
             state = normize(next_state, self.env.state_mean, self.env.state_std)
 
             throughput_list.append(info['throughput'])
+            rate_list.append(info['rate'])
             total_private_value_list.append(info['total_private_value'])
 
-            progress_bar.set_description(f'Throughput: {info["throughput"]:.2f}')
+            progress_bar.set_description(f'Throughput: {info["throughput"]:.2f} | Rate: {info["rate"]:.2f}')
 
         log(f'All throughput: {throughput_list}')
         log(f'Mean throughput: {np.mean(throughput_list):.2f}')
+        log(f'All rate: {rate_list}')
+        log(f'Mean rate: {np.mean(rate_list):.2f}')

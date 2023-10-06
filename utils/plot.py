@@ -17,6 +17,18 @@ def plot_reward(file_path):
     plt.show()
 
 
+def plot_loss(file_path):
+    loss = np.load(file_path)
+
+    plt.figure()
+    plt.plot(loss, label='Loss')
+    plt.legend()
+    plt.xlabel('Update Step')
+    plt.ylabel('Loss')
+    plt.savefig(f'./results/img/{os.path.splitext(os.path.basename(file_path))[0]}.png')
+    plt.show()
+
+
 def plot_sw(file_path, window_size):
     rewards = np.load(file_path)
     moving_average = np.convolve(rewards, np.ones(window_size)/window_size, mode='valid')
@@ -73,5 +85,7 @@ if __name__ == '__main__':
         plot_incentive_awarness(args.file_path)
     elif args.graph == 'tx_fee_vs_private_value':
         plot_tx_fee_vs_private_value(args.file_path, args.step)
+    elif args.graph == 'loss':
+        plot_loss(args.file_path)
     else:
         raise NotImplementedError

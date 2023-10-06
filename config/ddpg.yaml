@@ -5,14 +5,14 @@ path:
   rewards_path: ./results/data/ddpg_rewards.npy
   sw_path: ./results/data/ddpg_sw.npy
 model:
-  gamma: 0.99
+  gamma: 0.99 # not used
   actor_lr: .0001
   critic_lr: .001
   tau: 0.001
   batch_size: 64
   std: 0.2
-  memory_size: 20000
-  epsilon_min: 0.05
+  memory_size: 10000
+  epsilon_min: 0.01
   epsilon_decay: 0.999
   iterations: 1
 train:

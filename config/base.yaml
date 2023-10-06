@@ -6,9 +6,11 @@ results_subdirs:
   - ./results/img
   - ./results/log
 seed: 3407
-max_agents_num: 100
+max_agents_num: 10 # 100
 lambd: .6
 delta: 10
-b: 20
+b: 2 # 20
 is_burn: True
 a: 1 # * used in a * log(1 + x/a)
+is_clip: True
+clip_value: 10000

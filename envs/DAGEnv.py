@@ -14,12 +14,14 @@ from scipy.optimize import brentq, fsolve, root_scalar
 from gym import spaces
 import numpy as np
 import random
-from utils.utils import log
+from utils.utils import log, fix_seed
 
 
 class DAGEnv(gym.Env):
     def __init__(self,
                  fee_data_path,
+                 is_clip,
+                 clip_value,
                  max_agents_num,
                  lambd,
                  delta,
@@ -33,6 +35,8 @@ class DAGEnv(gym.Env):
         self.b = b
         self.is_burn = is_burn
         self.eps = 1e-8
+        self.is_clip = is_clip
+        self.clip_value = clip_value
 
         # * action: transaction fee
         self.action_space = spaces.Box(
@@ -43,6 +47,8 @@ class DAGEnv(gym.Env):
             low=0, high=np.inf, shape=(max_agents_num,), dtype=np.float32)
 
         self.fee_list = np.load(fee_data_path)
+        if self.is_clip:
+            self.fee_list = self.fee_list[self.fee_list <= self.clip_value]
         self.state_mean = np.mean(self.fee_list)
         self.state_std = np.std(self.fee_list)
 
@@ -103,17 +109,22 @@ class DAGEnv(gym.Env):
     def step(self, actions):
         # * calculate rewards and probabilities
         rewards, probabilities = self.calculate_rewards(actions)
-
+        
         # * calculate throughput and total private value
+        # ! FIXME: this is not the right way to calculate throughput
         included_txs = []
         included_txs_num = self.b if np.count_nonzero(probabilities) >= self.b else np.count_nonzero(probabilities)
         for _ in range(self.num_miners):
-            selected_indices = np.random.choice(self.num_agents, included_txs_num, 
-                    replace=False, p=(probabilities) / np.sum(probabilities)) # ? sample probablistically is right
+            if np.sum(probabilities) == 0:
+                selected_indices = []
+            else:
+                selected_indices = np.random.choice(self.num_agents, included_txs_num, 
+                        replace=False, p=(probabilities) / np.sum(probabilities)) # ? sample probablistically is right
             included_txs.extend(selected_indices)
 
         unique_txs = set(included_txs)
         num_unique_txs = len(unique_txs)
+        rate = num_unique_txs / (self.num_miners * self.b)
         total_private_value = sum(self.state[tx_id] for tx_id in unique_txs)
 
         # * update state
@@ -121,7 +132,8 @@ class DAGEnv(gym.Env):
         self.reset()
 
         return self.state, rewards, done, \
-            {"probabilities": probabilities, "throughput": num_unique_txs, "total_private_value": total_private_value}
+            {"probabilities": probabilities, "throughput": num_unique_txs, "rate": rate, \
+             "total_private_value": total_private_value}
 
     def find_optim_action(self, actions, idx=0, cnt=100):
         assert idx >= 0 and idx < self.num_agents
@@ -177,15 +189,6 @@ class DAGEnv(gym.Env):
 
         def G_k_max(z): return G(k_max, z)
 
-        # self.plot(G_k_max, (0, v[k_max]))
-        # log('b', self.b, 'num_agents', self.num_agents)
-        # log('G(0, v[0])', G(0, v[0]))
-        # log('actions_without_zero', actions_without_zero)
-        # log('v', v)
-        # log('k', k)
-        # log('k_max', k_max, 'v[k_max]', v[k_max])
-        # log('G_k_max(0)', G_k_max(0), 'G_k_max(v[k_max])', G_k_max(v[k_max]))
-        
         c_k_max = brentq(G_k_max, 0, v[k_max])
         # c_k_max = fsolve(G_k_max, x0=v[k_max])[0]
 
@@ -230,22 +233,91 @@ class DAGEnv(gym.Env):
 
 
 if __name__ == '__main__':
-    import yaml
-    from easydict import EasyDict as edict
-    BASE_CONFIGS_PATH = r'./config/base.yaml'
+    # import yaml
+    # from easydict import EasyDict as edict
+    # BASE_CONFIGS_PATH = r'./config/base.yaml'
 
-    with open(BASE_CONFIGS_PATH, 'r') as cfg_file:
-        base_cfgs = yaml.load(cfg_file, Loader=yaml.FullLoader)
-    base_cfgs = edict(base_cfgs)
+    # with open(BASE_CONFIGS_PATH, 'r') as cfg_file:
+    #     base_cfgs = yaml.load(cfg_file, Loader=yaml.FullLoader)
+    # base_cfgs = edict(base_cfgs)
 
+    # env = DAGEnv(
+    #         fee_data_path=base_cfgs.fee_data_path,
+    #         max_agents_num=base_cfgs.max_agents_num,
+    #         lambd=base_cfgs.lambd,
+    #         delta=base_cfgs.delta,
+    #         b=base_cfgs.b,
+    #         is_burn=base_cfgs.is_burn
+    # )
+    # env.plot(env.f, (0, 1))
+    # env.plot(env.invf, (env.f(1), 1))
+    # env.plot(env.invf_with_clip, (0, 1))
+
+    # env = DAGEnv(
+    #         fee_data_path=r'./data/fee.npy',
+    #         is_clip=False,
+    #         clip_value=None,
+    #         max_agents_num=2,
+    #         lambd=.6,
+    #         delta=10,
+    #         a=1,
+    #         b=1,
+    #         is_burn=True
+    # )
+    # env.reset()
+
+    # # 创建动作范围
+    # actions_range = np.arange(0, 100, 1)
+    # actions = np.array(np.meshgrid(actions_range, actions_range)).T.reshape(-1, 2)
+
+    # # 计算概率
+    # probabilities = np.zeros((len(actions),))
+    # for idx, action in enumerate(actions):
+    #     probabilities[idx] = env.calculate_probabilities(action)[0]
+
+    # # 将动作和概率分离
+    # actions_x = actions[:, 0]
+    # actions_y = actions[:, 1]
+    # probabilities = np.array(probabilities)
+
+    # # 绘制曲面图
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.plot_trisurf(actions_x, actions_y, probabilities, cmap='viridis')
+
+    # # 设置图形标题和轴标签
+    # ax.set_title('Probability vs Action')
+    # ax.set_xlabel('Action X')
+    # ax.set_ylabel('Action Y')
+    # ax.set_zlabel('Probability')
+
+    # # 显示图形
+    # plt.show()
+
+    fix_seed(0)
     env = DAGEnv(
-            fee_data_path=base_cfgs.fee_data_path,
-            max_agents_num=base_cfgs.max_agents_num,
-            lambd=base_cfgs.lambd,
-            delta=base_cfgs.delta,
-            b=base_cfgs.b,
-            is_burn=base_cfgs.is_burn
+            fee_data_path=r'./data/fee.npy',
+            is_clip=False,
+            clip_value=None,
+            max_agents_num=100,
+            lambd=.6,
+            delta=10,
+            a=1,
+            b=20,
+            is_burn=True
     )
-    env.plot(env.f, (0, 1))
-    env.plot(env.invf, (env.f(1), 1))
-    env.plot(env.invf_with_clip, (0, 1))
+    env.reset()
+
+    fee_list = np.load(r'./data/fee.npy')
+    prob = []
+    action = np.array([fee_list[i] for i in np.random.randint(len(fee_list), size=100)])
+
+    from tqdm import tqdm
+    x = np.linspace(17750, 17800, 100)
+    for i in tqdm(x):
+        action[0] = i
+        prob.append(env.calculate_probabilities(action)[0])
+    
+    plt.plot(x, prob)
+    plt.show()
+

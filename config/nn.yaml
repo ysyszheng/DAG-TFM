@@ -1,0 +1,12 @@
+path:
+  model_path: ./results/models/nn.pth
+  log_path: ./results/data/nn_log.csv
+  rewards_path: ./results/data/nn_rewards.npy
+  sw_path: ./results/data/nn_sw.npy
+  loss_path: ./results/data/nn_loss.npy
+model:
+train:
+  epochs: 1000
+  save_freq: 1
+  cnt: 200
+  lr: 0.001

@@ -9,9 +9,9 @@ data/*.tsv.gz
 data/*.tsv
 rewards*/
 img/
-models/
+# models/
 out/
-results/
+results*/
 fee.pkl
 
 
