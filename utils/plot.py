@@ -5,26 +5,14 @@ import os
 import pandas as pd
 
 
-def plot_reward(file_path):
-    rewards = np.load(file_path)
+def plot(file_path, label):
+    data = np.load(file_path)
     
     plt.figure()
-    plt.plot(rewards, label='Rewards')
+    plt.plot(data, label=label)
     plt.legend()
     plt.xlabel('Update Step')
-    plt.ylabel('Reward')
-    plt.savefig(f'./results/img/{os.path.splitext(os.path.basename(file_path))[0]}.png')
-    plt.show()
-
-
-def plot_loss(file_path):
-    loss = np.load(file_path)
-
-    plt.figure()
-    plt.plot(loss, label='Loss')
-    plt.legend()
-    plt.xlabel('Update Step')
-    plt.ylabel('Loss')
+    plt.ylabel(label)
     plt.savefig(f'./results/img/{os.path.splitext(os.path.basename(file_path))[0]}.png')
     plt.show()
 
@@ -75,17 +63,16 @@ if __name__ == '__main__':
     parser.add_argument('--graph', type=str, default=None, help='Graph')
     parser.add_argument('--window_size', type=int, default=100, help='Window Size')
     parser.add_argument('--step', type=int, default=None, help='Step')
+    parser.add_argument('--label', type=str, default=None, help='Label')
     args = parser.parse_args()
 
     if args.graph == 'sw':
         plot_sw(args.file_path, args.window_size)
-    elif args.graph == 'reward':
-        plot_reward(args.file_path)
     elif args.graph == 'incentive_awareness':
         plot_incentive_awarness(args.file_path)
     elif args.graph == 'tx_fee_vs_private_value':
         plot_tx_fee_vs_private_value(args.file_path, args.step)
-    elif args.graph == 'loss':
-        plot_loss(args.file_path)
+    elif args.graph == 'plot':
+        plot(args.file_path, args.label)
     else:
         raise NotImplementedError

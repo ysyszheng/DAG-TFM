@@ -13,4 +13,4 @@ b: 2 # 20
 is_burn: True
 a: 1 # * used in a * log(1 + x/a)
 is_clip: True
-clip_value: 10000
+clip_value: 40000

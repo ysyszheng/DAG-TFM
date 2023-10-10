@@ -23,8 +23,9 @@ class Net(nn.Module):
         return x
 
     def learn(self, actions, optimal_actions):
-        loss = torch.max(torch.abs(actions - optimal_actions))
-        # loss = torch.max(max_rewards - rewards)
+        loss = torch.max(torch.abs(actions - optimal_actions), dim=1).values
+        loss = torch.mean(loss)
+        
         self.loss = loss
         self.optimizer.zero_grad()
         loss.backward()

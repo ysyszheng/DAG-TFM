@@ -110,22 +110,18 @@ class DAGEnv(gym.Env):
         # * calculate rewards and probabilities
         rewards, probabilities = self.calculate_rewards(actions)
         
-        # * calculate throughput and total private value
-        # ! FIXME: this is not the right way to calculate throughput
+        # * calculate throughput and social welfare (total private value)
         included_txs = []
-        included_txs_num = self.b if np.count_nonzero(probabilities) >= self.b else np.count_nonzero(probabilities)
         for _ in range(self.num_miners):
-            if np.sum(probabilities) == 0:
-                selected_indices = []
-            else:
-                selected_indices = np.random.choice(self.num_agents, included_txs_num, 
-                        replace=False, p=(probabilities) / np.sum(probabilities)) # ? sample probablistically is right
+            random_numbers = np.random.rand(self.num_agents)
+            mask = random_numbers < probabilities
+            selected_indices = np.where(mask)[0]
             included_txs.extend(selected_indices)
 
         unique_txs = set(included_txs)
         num_unique_txs = len(unique_txs)
         rate = num_unique_txs / (self.num_miners * self.b)
-        total_private_value = sum(self.state[tx_id] for tx_id in unique_txs)
+        total_private_value = sum(self.state[tx_id] for tx_id in unique_txs) # sw
 
         # * update state
         done = True
@@ -266,32 +262,26 @@ if __name__ == '__main__':
     # )
     # env.reset()
 
-    # # 创建动作范围
     # actions_range = np.arange(0, 100, 1)
     # actions = np.array(np.meshgrid(actions_range, actions_range)).T.reshape(-1, 2)
 
-    # # 计算概率
     # probabilities = np.zeros((len(actions),))
     # for idx, action in enumerate(actions):
     #     probabilities[idx] = env.calculate_probabilities(action)[0]
 
-    # # 将动作和概率分离
     # actions_x = actions[:, 0]
     # actions_y = actions[:, 1]
     # probabilities = np.array(probabilities)
 
-    # # 绘制曲面图
     # fig = plt.figure()
     # ax = fig.add_subplot(111, projection='3d')
     # ax.plot_trisurf(actions_x, actions_y, probabilities, cmap='viridis')
 
-    # # 设置图形标题和轴标签
     # ax.set_title('Probability vs Action')
     # ax.set_xlabel('Action X')
     # ax.set_ylabel('Action Y')
     # ax.set_zlabel('Probability')
 
-    # # 显示图形
     # plt.show()
 
     fix_seed(0)

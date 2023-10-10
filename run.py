@@ -50,6 +50,8 @@ if __name__ == '__main__':
             from scripts.test_ddpg import Tester
         elif args.method == 'PPO':
             from scripts.test_ppo import Tester
+        elif args.method == 'NN':
+            from scripts.test_nn import Tester
         tester = Tester(cfgs)
         tester.testing()
     elif args.mode == 'eval':
@@ -57,6 +59,8 @@ if __name__ == '__main__':
             from scripts.eval_ddpg import Evaluator
         elif args.method == 'PPO':
             from scripts.eval_ppo import Evaluator
+        elif args.method == 'NN':
+            from scripts.eval_nn import Evaluator
         evaluator = Evaluator(cfgs)
         evaluator.evaluating()
     else:

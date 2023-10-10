@@ -45,3 +45,11 @@ python3 ./run.py --method [DDPG/PPO] --mode test --cfg ./config/[ddpg/ppo].yaml
 # Eval equilibrium
 python3 ./run.py --method [DDPG/PPO] --mode eval --cfg ./config/[ddpg/ppo].yaml
 ```
+
+Result
+-----
+
+| TFM | Throughput | Social Welfare |
+|:-:|:-:|:-:|
+| normal | 2.6022 | 21830.8362 |
+| $\log(1+x)$ | 2.8716 | 14789.4342 |
