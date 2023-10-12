@@ -56,7 +56,7 @@ class Trainer(object):
       
       sw_list.append(rewards.sum())
       loss_list.append(self.nn.loss.item())
-      delta_rewards = (optimal_rewards - batch_rewards)
+      delta_rewards = (optimal_rewards - batch_rewards)/batch_rewards
       delta_rewards_list.append(np.mean(np.max(delta_rewards, axis=1)))
 
       if epoch % self.cfgs.train.save_freq == 0:

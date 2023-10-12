@@ -1,0 +1,18 @@
+path:
+  model_path: ./results/models/dnn.pth
+  log_path: ./results/data/dnn_log.csv
+  prob_loss_path: ./results/data/dnn_prob_loss.npy
+  reward_loss_path: ./results/data/dnn_reward_loss.npy
+model:
+train:
+  epochs: 1000
+  save_freq: 1
+  cnt: 400
+  lr_1: 0.0005
+  lr_2: 0.0005
+  batch_size: 32
+eval:
+  steps: 100
+  cnt: 400
+test:
+  steps: 10000

@@ -60,8 +60,8 @@ class Evaluator(object):
 
             # delta_action_list.append(np.max(np.abs(optimal_actions - actions)/optimal_actions))
             # delta_reward_list.append(np.max((optimal_rewards - rewards)/optimal_rewards))
-            delta_action_list.append(np.max(np.abs(optimal_actions - actions)))
-            delta_reward_list.append(np.max(optimal_rewards - rewards))
+            delta_action_list.append(np.max(np.abs(optimal_actions - actions)/actions))
+            delta_reward_list.append(np.max((optimal_rewards - rewards)/rewards))
             
             progress_bar.set_description(f'Max action deviation: {delta_action_list[-1]}, Max reward deviation: {delta_reward_list[-1]}')
         

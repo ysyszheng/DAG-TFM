@@ -39,17 +39,18 @@ Run
 
 ```bash
 # Train Agent
-python3 ./run.py --method [DDPG/PPO] --mode train --cfg ./config/[ddpg/ppo].yaml
+python3 ./run.py --method [DDPG/PPO/NN] --mode train --cfg ./config/[ddpg/ppo/nn].yaml
 # Test throughputs
-python3 ./run.py --method [DDPG/PPO] --mode test --cfg ./config/[ddpg/ppo].yaml
+python3 ./run.py --method [DDPG/PPO/NN] --mode test --cfg ./config/[ddpg/ppo/nn].yaml
 # Eval equilibrium
-python3 ./run.py --method [DDPG/PPO] --mode eval --cfg ./config/[ddpg/ppo].yaml
+python3 ./run.py --method [DDPG/PPO/NN] --mode eval --cfg ./config/[ddpg/ppo/nn].yaml
 ```
 
 Result
 -----
 
-| TFM | Throughput | Social Welfare |
-|:-:|:-:|:-:|
-| normal | 2.6022 | 21830.8362 |
-| $\log(1+x)$ | 2.8716 | 14789.4342 |
+| TFM | Throughput | Social Welfare | $\max\{|a_{optimal}-a|\}$ | $\max\{r_optimal-r\}$ |
+|:--:|:--:|:--:|:--:|:--:|
+| normal | 2.6022 | 21830.8362 | 1222.4826398699383 | 490.99725859408466 |
+| $\log(1+x)$ | 2.8716 | 14789.4342 | 367.26538937647535 | 72.50869694291318 |
+| pay as bid | | | | |

@@ -15,7 +15,7 @@ class Net(nn.Module):
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
         self.loss = None
-
+    
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
@@ -23,7 +23,7 @@ class Net(nn.Module):
         return x
 
     def learn(self, actions, optimal_actions):
-        loss = torch.max(torch.abs(actions - optimal_actions), dim=1).values
+        loss = torch.max(torch.abs(actions - optimal_actions)/actions, dim=1).values
         loss = torch.mean(loss)
         
         self.loss = loss

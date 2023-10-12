@@ -43,6 +43,8 @@ if __name__ == '__main__':
             from scripts.train_ppo import Trainer
         elif args.method == 'NN':
             from scripts.train_nn import Trainer
+        elif args.method == 'DNN':
+            from scripts.train_dnn import Trainer
         trainer = Trainer(cfgs)
         trainer.training()
     elif args.mode == 'test':
