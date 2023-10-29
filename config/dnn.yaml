@@ -10,7 +10,7 @@ train:
   cnt: 400
   lr_1: 0.0005
   lr_2: 0.0005
-  batch_size: 32
+  batch_size: 4
 eval:
   steps: 100
   cnt: 400

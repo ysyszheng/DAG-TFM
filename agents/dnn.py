@@ -3,29 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-class ProbNet(nn.Module):
-  def __init__(self, num_agents, num_actions, lr):
-    super(DoubleNN, self).__init__()
-    self.prob_net = nn.Sequential(
-      nn.Linear(num_agents, 256),
-      nn.ReLU(),
-      nn.Linear(256, 256),
-      nn.ReLU(),
-      nn.Linear(256, num_actions),
-      nn.Tanh(),
-    )
-    self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
-    self.prob_loss = None
-
-  def forward(self, x):
-    return self.prob_net(x)
-  
-  def learn(self, prob, true_prob):
-    self.prob_loss = torch.mean(torch.max(torch.abs(prob - true_prob), dim=1).values)
-    self.optimizer.zero_grad()
-    self.prob_loss.backward()
-    self.optimizer.step()
-
 
 class DoubleNN(nn.Module):
   def __init__(self, num_agents, num_actions, lr_1, lr_2):
@@ -67,7 +44,7 @@ class DoubleNN(nn.Module):
 
   def learn(self, prob, true_prob, rev, opt_rev):
     self.prob_loss = torch.mean(torch.max(torch.abs(prob - true_prob), dim=1).values)
-    self.rev_loss = torch.mean(torch.max((rev - opt_rev) / rev, dim=1).values)
+    self.rev_loss = torch.mean(torch.max(torch.div((rev - opt_rev), rev + 1e-8), dim=1).values)
     
     self.optimizer1.zero_grad()
     self.prob_loss.backward()
