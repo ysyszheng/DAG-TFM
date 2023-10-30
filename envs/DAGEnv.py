@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 warnings.filterwarnings("ignore")
 
 import gym
+import concurrent.futures
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq, fsolve, root_scalar
 from gym import spaces
@@ -112,11 +113,16 @@ class DAGEnv(gym.Env):
         # calculate throughput and social welfare (total private value)
         included_txs = []
         # use marginal probabilities
-        for _ in range(self.num_miners):
+        def select_indices(_):
             random_numbers = np.random.rand(self.num_agents)
             mask = random_numbers < probabilities
-            selected_indices = np.where(mask)[0]
-            included_txs.extend(selected_indices)
+            selected_indices = np.where(mask)[0].tolist()
+            return selected_indices
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_miners) as executor:
+            selected_indices_generator = executor.map(select_indices, range(self.num_miners))
+            for selected_indices in selected_indices_generator:
+                included_txs.extend(selected_indices)
 
         # use combinations
         # threshold = 1e-5
@@ -259,7 +265,7 @@ if __name__ == '__main__':
     
     fix_seed(base_cfgs.seed)
 
-    for lambd in range(2,10):
+    for lambd in range(1,11):
         env = DAGEnv(
                 fee_data_path=base_cfgs.fee_data_path,
                 is_clip=base_cfgs.is_clip,
@@ -278,9 +284,11 @@ if __name__ == '__main__':
         # env.plot(env.invf_with_clip, (0, 1))
         
         throughput_list = []
+        sw_list = []
         progress_bar = tqdm(range(3))
         for _ in progress_bar:
             state, _, _ , info = env.step(state)
             throughput_list.append(info["throughput"])
+            sw_list.append(info['total_private_value'])
             progress_bar.set_description(f'throughout: {info["throughput"]}, optimal: {info["optimal"]}')
-        print(lambd, sum(throughput_list)/len(throughput_list))
+        print(lambd, sum(throughput_list)/len(throughput_list), sum(sw_list)/len(sw_list))
