@@ -100,7 +100,8 @@ class DAGEnv(gym.Env):
         # fix the number of txs in delta time (fix number of agents)
         self.num_agents = self.max_agents_num
         self.state = np.array([self.fee_list[i] for i in np.random.randint(len(self.fee_list), size=self.num_agents)])
-        self.num_miners = 1 + np.random.poisson(self.lambd * self.delta)
+        # self.num_miners = 1 + np.random.poisson(self.lambd * self.delta)
+        self.num_miners = self.lambd * self.delta
 
         return self.state
 
@@ -111,26 +112,27 @@ class DAGEnv(gym.Env):
         # calculate throughput and social welfare (total private value)
         included_txs = []
         # use marginal probabilities
-        # for _ in range(self.num_miners):
-        #     random_numbers = np.random.rand(self.num_agents)
-        #     mask = random_numbers < probabilities
-        #     selected_indices = np.where(mask)[0]
-        #     included_txs.extend(selected_indices)
+        for _ in range(self.num_miners):
+            random_numbers = np.random.rand(self.num_agents)
+            mask = random_numbers < probabilities
+            selected_indices = np.where(mask)[0]
+            included_txs.extend(selected_indices)
 
-        threshold = 1e-5
-        if abs(sum(probabilities) - self.b) <= threshold:
-            for _ in range(self.num_miners):
-                event_set, p = get_dist_from_margin(self.b, self.num_agents, probabilities.tolist())
-                print(sum(p))
-                p = p / sum(p) # sum(p) approx 1
-                txs = list(random.choices(event_set, p, k=1)[0])
-                included_txs.append(txs)
-        elif sum(probabilities) < self.b:
-            for _ in range(self.num_miners):
-                zero_indices = np.where(probabilities <= 0)[0]
-                included_txs.append(zero_indices)
-        else:
-            raise ValueError
+        # use combinations
+        # threshold = 1e-5
+        # non_zero_indices = list(np.where(probabilities > 0)[0])
+        # probabilities_without_zero = probabilities[non_zero_indices].tolist()
+        # if abs(sum(probabilities_without_zero) - self.b) <= threshold:
+        #     for _ in range(self.num_miners):
+        #         event_set, p = get_dist_from_margin(self.b, len(probabilities_without_zero), probabilities_without_zero)
+        #         p = [i / sum(p) for i in p] # sum(p) approx 1
+        #         txs = [non_zero_indices[i] for i in list(random.choices(event_set, p, k=1)[0])]
+        #         included_txs.extend(txs)
+        # elif sum(probabilities_without_zero) < self.b:
+        #     for _ in range(self.num_miners):
+        #         included_txs.extend(non_zero_indices)
+        # else:
+        #     raise ValueError
 
         unique_txs = set(included_txs)
         num_unique_txs = len(unique_txs)
@@ -254,27 +256,31 @@ if __name__ == '__main__':
     with open(BASE_CONFIGS_PATH, 'r') as cfg_file:
         base_cfgs = yaml.load(cfg_file, Loader=yaml.FullLoader)
     base_cfgs = edict(base_cfgs)
-
-    fix_seed(base_cfgs.seed)
-    env = DAGEnv(
-            fee_data_path=base_cfgs.fee_data_path,
-            is_clip=base_cfgs.is_clip,
-            clip_value=base_cfgs.clip_value,
-            max_agents_num=base_cfgs.max_agents_num,
-            lambd=base_cfgs.lambd,
-            delta=base_cfgs.delta,
-            b=base_cfgs.b,
-            a=base_cfgs.a,
-            is_burn=base_cfgs.is_burn
-    )
-    state = env.reset()
-
-    # env.plot(env.f, (0, 1))
-    # env.plot(env.invf, (env.f(1), 1))
-    # env.plot(env.invf_with_clip, (0, 1))
     
-    progress_bar = tqdm(range(1000))
-    for _ in progress_bar:
-        state, _, _ , info = env.step(state)
-        progress_bar.set_description(f'throughout: {info["throughput"]}, optimal: {info["optimal"]}')
-        print(f'throughout: {info["throughput"]}, optimal: {info["optimal"]}')
+    fix_seed(base_cfgs.seed)
+
+    for lambd in range(2,10):
+        env = DAGEnv(
+                fee_data_path=base_cfgs.fee_data_path,
+                is_clip=base_cfgs.is_clip,
+                clip_value=base_cfgs.clip_value,
+                max_agents_num=base_cfgs.max_agents_num,
+                lambd=lambd,
+                delta=base_cfgs.delta,
+                b=base_cfgs.b,
+                a=base_cfgs.a,
+                is_burn=base_cfgs.is_burn
+        )
+        state = env.reset()
+
+        # env.plot(env.f, (0, 1))
+        # env.plot(env.invf, (env.f(1), 1))
+        # env.plot(env.invf_with_clip, (0, 1))
+        
+        throughput_list = []
+        progress_bar = tqdm(range(3))
+        for _ in progress_bar:
+            state, _, _ , info = env.step(state)
+            throughput_list.append(info["throughput"])
+            progress_bar.set_description(f'throughout: {info["throughput"]}, optimal: {info["optimal"]}')
+        print(lambd, sum(throughput_list)/len(throughput_list))
