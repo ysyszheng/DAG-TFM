@@ -9,13 +9,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 warnings.filterwarnings("ignore")
 
 import gym
-import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq, fsolve, root_scalar
 from gym import spaces
 import numpy as np
 import random
 from utils.utils import log, fix_seed, get_dist_from_margin
+import time
 
 
 class DAGEnv(gym.Env):
@@ -119,26 +120,26 @@ class DAGEnv(gym.Env):
             selected_indices = np.where(mask)[0].tolist()
             return selected_indices
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_miners) as executor:
-            selected_indices_generator = executor.map(select_indices, range(self.num_miners))
-            for selected_indices in selected_indices_generator:
-                included_txs.extend(selected_indices)
+        with ThreadPoolExecutor(max_workers=self.num_miners) as executor:
+            for result in executor.map(select_indices, range(self.num_miners)):
+                included_txs.extend(result)
 
-        # use combinations
-        # threshold = 1e-5
-        # non_zero_indices = list(np.where(probabilities > 0)[0])
-        # probabilities_without_zero = probabilities[non_zero_indices].tolist()
-        # if abs(sum(probabilities_without_zero) - self.b) <= threshold:
-        #     for _ in range(self.num_miners):
-        #         event_set, p = get_dist_from_margin(self.b, len(probabilities_without_zero), probabilities_without_zero)
-        #         p = [i / sum(p) for i in p] # sum(p) approx 1
-        #         txs = [non_zero_indices[i] for i in list(random.choices(event_set, p, k=1)[0])]
-        #         included_txs.extend(txs)
-        # elif sum(probabilities_without_zero) < self.b:
-        #     for _ in range(self.num_miners):
-        #         included_txs.extend(non_zero_indices)
-        # else:
-        #     raise ValueError
+        # # use combinations
+        # def select_indices(_):
+        #     threshold = 1e-5
+        #     non_zero_indices = list(np.where(probabilities > 0)[0])
+        #     probabilities_without_zero = probabilities[non_zero_indices].tolist()
+        #     if abs(sum(probabilities_without_zero) - self.b) <= threshold:
+        #         for _ in range(self.num_miners):
+        #             event_set, p = get_dist_from_margin(self.b, len(probabilities_without_zero), probabilities_without_zero)
+        #             p = [i / sum(p) for i in p] # sum(p) approx 1
+        #             txs = [non_zero_indices[i] for i in list(random.choices(event_set, p, k=1)[0])]
+        #             included_txs.extend(txs)
+        #     elif sum(probabilities_without_zero) < self.b:
+        #         for _ in range(self.num_miners):
+        #             included_txs.extend(non_zero_indices)
+        #     else:
+        #         raise ValueError
 
         unique_txs = set(included_txs)
         num_unique_txs = len(unique_txs)
@@ -192,19 +193,37 @@ class DAGEnv(gym.Env):
         def G(l, z):
             assert l >= 0 and l < self.num_agents
             res = 0
-            for h in range(l+1):
-                res += k[h] * self.invf_with_clip(z/(v[h]))
+            with ThreadPoolExecutor(max_workers=l+1) as executor:
+                for h, result in enumerate(executor.map(self.invf_with_clip, z/(v[:l+1]))):
+                    res += k[h] * result
+            # for h in range(l+1):
+            #     res += k[h] * self.invf_with_clip(z/(v[h]))
             return (res - self.b)
 
-        k_max = -1
-        flag = False
-        while (k_max + 1) < len(v) and not flag:
-            k_max += 1
-            for l in range(k_max+1):
-                if G(l, v[l]) > 0:
-                    flag = True
-                    k_max -= 1
-                    break
+        def GG(l): return G(int(l), v[int(l)]) # consider l as an integer
+
+        if GG(len(v)-1) <= 0:
+            k_max = len(v)-1
+        else:
+            k_max = int(brentq(GG, 0, len(v)-1))
+            if GG(k_max) > 0:
+                k_max -= 1
+        # print(f'k_max: {int(k_max)}, G(k_max, v[k_max]): {GG(k_max)}, G(k_max+1, v[k_max+1]): {GG(k_max+1)}') # ! delete
+
+        # start_time = time.time() # ! delete
+        # k_max = -1
+        # flag = False
+        # while (k_max + 1) < len(v) and not flag:
+        #     k_max += 1
+        #     for l in range(k_max+1):
+        #         if G(l, v[l]) > 0:
+        #             flag = True
+        #             k_max -= 1
+        #             break
+        # log(f"k_max: {k_max}") # ! delete
+        # end_time = time.time() # ! delete
+        # execution_time = end_time - start_time # ! delete
+        # log(f"执行时间：{execution_time}秒") # ! delete
 
         def G_k_max(z): return G(k_max, z)
 
@@ -221,6 +240,7 @@ class DAGEnv(gym.Env):
             else:
                 idx = np.where(actions[i] == v)[0][0]
                 probabilities[i] = p[idx]
+
         return probabilities
 
     def calculate_rewards(self, actions):
@@ -256,6 +276,7 @@ if __name__ == '__main__':
     from tqdm import tqdm
     from easydict import EasyDict as edict
     from utils.utils import fix_seed
+    import cProfile
 
     BASE_CONFIGS_PATH = r'./config/base.yaml'
 
@@ -265,7 +286,7 @@ if __name__ == '__main__':
     
     fix_seed(base_cfgs.seed)
 
-    for lambd in range(1,11):
+    for lambd in range(1,10):
         env = DAGEnv(
                 fee_data_path=base_cfgs.fee_data_path,
                 is_clip=base_cfgs.is_clip,
@@ -279,6 +300,8 @@ if __name__ == '__main__':
         )
         state = env.reset()
 
+        # cProfile.run('env.step(state)', sort='cumtime')
+
         # env.plot(env.f, (0, 1))
         # env.plot(env.invf, (env.f(1), 1))
         # env.plot(env.invf_with_clip, (0, 1))
@@ -291,4 +314,4 @@ if __name__ == '__main__':
             throughput_list.append(info["throughput"])
             sw_list.append(info['total_private_value'])
             progress_bar.set_description(f'throughout: {info["throughput"]}, optimal: {info["optimal"]}')
-        print(lambd, sum(throughput_list)/len(throughput_list), sum(sw_list)/len(sw_list))
+        print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')
