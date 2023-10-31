@@ -10,12 +10,14 @@ warnings.filterwarnings("ignore")
 
 import gym
 from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import Pool
+import threading
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq, fsolve, root_scalar, minimize_scalar
 from gym import spaces
 import numpy as np
 import random
-from utils.utils import log, fix_seed, get_dist_from_margin
+from utils.utils import log, fix_seed, get_dist_from_margin, print_thread_count
 import time
 from copy import deepcopy
 
@@ -103,6 +105,7 @@ class DAGEnv(gym.Env):
         # fix the number of txs in delta time (fix number of agents)
         self.num_agents = self.max_agents_num
         self.state = np.array([self.fee_list[i] for i in np.random.randint(len(self.fee_list), size=self.num_agents)])
+        # miner numbers in delta time, Poisson distribution or fixed number
         # self.num_miners = 1 + np.random.poisson(self.lambd * self.delta)
         self.num_miners = self.lambd * self.delta
 
@@ -156,45 +159,33 @@ class DAGEnv(gym.Env):
             {"probabilities": probabilities, "throughput": throughput_tps, \
              "optimal": optimal_throughput_tps, "total_private_value": total_private_value}
 
-    def find_optim_action(self, actions, idx=0, cnt=100):
+    def find_optim_action(self, actions, idx=0):
         assert idx >= 0 and idx < self.num_agents
         def calculate_neg_rewards(a, *args):
             actions, idx = args
-            actions[idx] = a
-            rewards, _ = self.calculate_rewards(actions)
+            actions_copy = deepcopy(actions)
+            actions_copy[idx] = a
+            rewards, _ = self.calculate_rewards(actions_copy)
             return -rewards[idx]
 
         s = self.state[idx]
-        start_time = time.time()
-        result = minimize_scalar(calculate_neg_rewards, args=(deepcopy(actions), idx), bounds=(0, s), method='bounded')
+        result = minimize_scalar(calculate_neg_rewards, args=(actions, idx), bounds=(0, s), method='bounded')
         optim_action = result.x
         max_reward = -result.fun
-        end_time = time.time()
-        execution_time = end_time - start_time
-
-        log(idx, ',', s, ',', optim_action, ',', max_reward, ',', execution_time)
-
-        start_time = time.time()
-        max_reward = -1
-        optim_action = 0
-        action_copy = deepcopy(actions)
-        for a in np.linspace(0, s, cnt):
-            action_copy[idx] = a
-            rewards, _ = self.calculate_rewards(action_copy)
-            if rewards[idx] > max_reward:
-                max_reward = rewards[idx]
-                optim_action = a
-        end_time = time.time()
-        execution_time = end_time - start_time
-        log(idx, ',', s, ',', optim_action, ',', max_reward, ',', execution_time)
-
+        # log(f'idx: {idx}, state: {self.state[idx]}, optim_action: {optim_action}, max_reward: {max_reward}')
         return optim_action, max_reward
 
-    def find_all_optim_action(self, actions, cnt=100):
+    def find_all_optim_action(self, actions):
         optim_actions = np.zeros_like(actions)
         max_rewards = np.zeros_like(actions)
-        with ThreadPoolExecutor(max_workers=self.num_agents) as executor:
-            for idx, result in enumerate(executor.map(self.find_optim_action, [actions for _ in range(self.num_agents)], range(self.num_agents), [cnt for _ in range(self.num_agents)])):
+        # with ThreadPoolExecutor(max_workers=self.num_agents) as executor:
+        #     for idx, result in enumerate(executor.map(self.find_optim_action, 
+        #                     [actions for _ in range(self.num_agents)], range(self.num_agents))):
+        #         optim_actions[idx], max_rewards[idx] = result
+        with Pool(processes=8) as pool:
+            results = pool.starmap(self.find_optim_action, 
+                            [(actions, idx) for idx in range(self.num_agents)])
+            for idx, result in enumerate(results):
                 optim_actions[idx], max_rewards[idx] = result
 
         return optim_actions, max_rewards
@@ -317,21 +308,19 @@ if __name__ == '__main__':
     # just for test
     action = state
 
+    # optimal_action = np.zeros_like(state)
     # start_time = time.time()
-    # optimal_action_, _ = env.find_all_optim_action(action)
+    # for idx in range(env.num_agents):
+    #     optimal_action[idx], _ =env.find_optim_action(action, idx=idx)
     # end_time = time.time()
     # execution_time = end_time - start_time
     # print(f'exec time: {execution_time} second')
-    # log(optimal_action_)
-    
-    optimal_action = np.zeros_like(state)
+
     start_time = time.time()
-    for idx in range(env.num_agents):
-        optimal_action[idx], _ =env.find_optim_action(action, idx=idx)
+    optimal_action_, _ = env.find_all_optim_action(action)
     end_time = time.time()
     execution_time = end_time - start_time
     print(f'exec time: {execution_time} second')
-    log(optimal_action)
     
     # print(f'{optimal_action == optimal_action_}')
 

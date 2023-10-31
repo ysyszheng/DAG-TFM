@@ -6,9 +6,13 @@ import os
 from typing import List
 import itertools
 from copy import deepcopy
-
+import threading
 
 NO_VERBOSE = False
+
+def print_thread_count():
+    thread_count = threading.active_count()
+    print(f"Current active thread count: {thread_count}")
 
 
 def fix_seed(seed):
