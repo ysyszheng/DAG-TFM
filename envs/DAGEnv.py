@@ -11,12 +11,13 @@ warnings.filterwarnings("ignore")
 import gym
 from concurrent.futures import ThreadPoolExecutor
 import matplotlib.pyplot as plt
-from scipy.optimize import brentq, fsolve, root_scalar
+from scipy.optimize import brentq, fsolve, root_scalar, minimize_scalar
 from gym import spaces
 import numpy as np
 import random
 from utils.utils import log, fix_seed, get_dist_from_margin
 import time
+from copy import deepcopy
 
 
 class DAGEnv(gym.Env):
@@ -157,18 +158,46 @@ class DAGEnv(gym.Env):
 
     def find_optim_action(self, actions, idx=0, cnt=100):
         assert idx >= 0 and idx < self.num_agents
+        def calculate_neg_rewards(a, *args):
+            actions, idx = args
+            actions[idx] = a
+            rewards, _ = self.calculate_rewards(actions)
+            return -rewards[idx]
+
         s = self.state[idx]
+        start_time = time.time()
+        result = minimize_scalar(calculate_neg_rewards, args=(deepcopy(actions), idx), bounds=(0, s), method='bounded')
+        optim_action = result.x
+        max_reward = -result.fun
+        end_time = time.time()
+        execution_time = end_time - start_time
+
+        log(idx, ',', s, ',', optim_action, ',', max_reward, ',', execution_time)
+
+        start_time = time.time()
         max_reward = -1
         optim_action = 0
-        action_copy = actions.copy()
+        action_copy = deepcopy(actions)
         for a in np.linspace(0, s, cnt):
             action_copy[idx] = a
             rewards, _ = self.calculate_rewards(action_copy)
-            # print(a, ',', rewards[idx])
             if rewards[idx] > max_reward:
                 max_reward = rewards[idx]
                 optim_action = a
+        end_time = time.time()
+        execution_time = end_time - start_time
+        log(idx, ',', s, ',', optim_action, ',', max_reward, ',', execution_time)
+
         return optim_action, max_reward
+
+    def find_all_optim_action(self, actions, cnt=100):
+        optim_actions = np.zeros_like(actions)
+        max_rewards = np.zeros_like(actions)
+        with ThreadPoolExecutor(max_workers=self.num_agents) as executor:
+            for idx, result in enumerate(executor.map(self.find_optim_action, [actions for _ in range(self.num_agents)], range(self.num_agents), [cnt for _ in range(self.num_agents)])):
+                optim_actions[idx], max_rewards[idx] = result
+
+        return optim_actions, max_rewards
 
     def calculate_probabilities(self, actions: np.ndarray) -> np.ndarray:
         # probability of being included in the block
@@ -202,28 +231,14 @@ class DAGEnv(gym.Env):
 
         def GG(l): return G(int(l), v[int(l)]) # consider l as an integer
 
-        if GG(len(v)-1) <= 0:
+        if GG(0) > 0:
+            raise ValueError # G(0,v[0]) = -b < 0
+        elif GG(len(v)-1) <= 0:
             k_max = len(v)-1
         else:
             k_max = int(brentq(GG, 0, len(v)-1))
             if GG(k_max) > 0:
                 k_max -= 1
-        # print(f'k_max: {int(k_max)}, G(k_max, v[k_max]): {GG(k_max)}, G(k_max+1, v[k_max+1]): {GG(k_max+1)}') # ! delete
-
-        # start_time = time.time() # ! delete
-        # k_max = -1
-        # flag = False
-        # while (k_max + 1) < len(v) and not flag:
-        #     k_max += 1
-        #     for l in range(k_max+1):
-        #         if G(l, v[l]) > 0:
-        #             flag = True
-        #             k_max -= 1
-        #             break
-        # log(f"k_max: {k_max}") # ! delete
-        # end_time = time.time() # ! delete
-        # execution_time = end_time - start_time # ! delete
-        # log(f"执行时间：{execution_time}秒") # ! delete
 
         def G_k_max(z): return G(k_max, z)
 
@@ -285,33 +300,74 @@ if __name__ == '__main__':
     base_cfgs = edict(base_cfgs)
     
     fix_seed(base_cfgs.seed)
+    
+    env = DAGEnv(
+            fee_data_path=base_cfgs.fee_data_path,
+            is_clip=base_cfgs.is_clip,
+            clip_value=base_cfgs.clip_value,
+            max_agents_num=base_cfgs.max_agents_num,
+            lambd=base_cfgs.lambd,
+            delta=base_cfgs.delta,
+            b=base_cfgs.b,
+            a=base_cfgs.a,
+            is_burn=base_cfgs.is_burn
+    )
+    state = env.reset()
 
-    for lambd in range(1,10):
-        env = DAGEnv(
-                fee_data_path=base_cfgs.fee_data_path,
-                is_clip=base_cfgs.is_clip,
-                clip_value=base_cfgs.clip_value,
-                max_agents_num=base_cfgs.max_agents_num,
-                lambd=lambd,
-                delta=base_cfgs.delta,
-                b=base_cfgs.b,
-                a=base_cfgs.a,
-                is_burn=base_cfgs.is_burn
-        )
-        state = env.reset()
+    # just for test
+    action = state
 
-        # cProfile.run('env.step(state)', sort='cumtime')
+    # start_time = time.time()
+    # optimal_action_, _ = env.find_all_optim_action(action)
+    # end_time = time.time()
+    # execution_time = end_time - start_time
+    # print(f'exec time: {execution_time} second')
+    # log(optimal_action_)
+    
+    optimal_action = np.zeros_like(state)
+    start_time = time.time()
+    for idx in range(env.num_agents):
+        optimal_action[idx], _ =env.find_optim_action(action, idx=idx)
+    end_time = time.time()
+    execution_time = end_time - start_time
+    print(f'exec time: {execution_time} second')
+    log(optimal_action)
+    
+    # print(f'{optimal_action == optimal_action_}')
 
-        # env.plot(env.f, (0, 1))
-        # env.plot(env.invf, (env.f(1), 1))
-        # env.plot(env.invf_with_clip, (0, 1))
+    # _, _, _ , info = env.step(state)
+    # for fee, prob in zip(state, info['probabilities']):
+    #     print(fee, ',', prob)
+
+
+    # cProfile.run('env.step(state)', sort='cumtime')
+
+    # env.plot(env.f, (0, 1))
+    # env.plot(env.invf, (env.f(1), 1))
+    # env.plot(env.invf_with_clip, (0, 1))
+
+    # # plot
+    # for lambd in range(1,10):
+    #     env = DAGEnv(
+    #             fee_data_path=base_cfgs.fee_data_path,
+    #             is_clip=base_cfgs.is_clip,
+    #             clip_value=base_cfgs.clip_value,
+    #             max_agents_num=base_cfgs.max_agents_num,
+    #             lambd=lambd,
+    #             delta=base_cfgs.delta,
+    #             b=base_cfgs.b,
+    #             a=base_cfgs.a,
+    #             is_burn=base_cfgs.is_burn
+    #     )
+    #     state = env.reset()
+
         
-        throughput_list = []
-        sw_list = []
-        progress_bar = tqdm(range(3))
-        for _ in progress_bar:
-            state, _, _ , info = env.step(state)
-            throughput_list.append(info["throughput"])
-            sw_list.append(info['total_private_value'])
-            progress_bar.set_description(f'throughout: {info["throughput"]}, optimal: {info["optimal"]}')
-        print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')
+    #     throughput_list = []
+    #     sw_list = []
+    #     progress_bar = tqdm(range(3))
+    #     for _ in progress_bar:
+    #         state, _, _ , info = env.step(state)
+    #         throughput_list.append(info["throughput"])
+    #         sw_list.append(info['total_private_value'])
+    #         progress_bar.set_description(f'throughout: {info["throughput"]}, optimal: {info["optimal"]}')
+    #     print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')

@@ -19,14 +19,13 @@ class Trainer(object):
             fee_data_path=cfgs.fee_data_path, max_agents_num=cfgs.max_agents_num,
             lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
         )
-        self.agent = PPO(1, 1, cfgs.model.actor_lr, cfgs.model.critic_lr, 
+        self.agent = PPO(self.env.observation_space, self.env.action_space, cfgs.model.actor_lr, cfgs.model.critic_lr, 
             cfgs.model.c1, cfgs.model.c2, cfgs.model.K_epochs, cfgs.model.gamma, 
             cfgs.model.eps_clip, cfgs.model.std_init, cfgs.model.std_decay, cfgs.model.std_min
         )
 
     def training(self):
         state = self.env.reset()
-        state = normize(state, self.env.state_mean, self.env.state_std)
         reward_list = []
         sw_list = []
 
@@ -37,45 +36,42 @@ class Trainer(object):
 
         progress_bar = tqdm(range(1, self.cfgs.train.steps+1))
         for step in progress_bar:
-            action = np.zeros_like(state)
-
-            for i in range(len(state)):
-                action[i] = self.agent.select_action(state[i])
-
-            state = unormize(state, self.env.state_mean, self.env.state_std)
-            action = action * state
+            action = self.agent.select_action(state)
+            _, optimal_reward = self.env.find_all_optim_action(action)
 
             next_state, reward, _, info = self.env.step(action)
-            self.agent.buffer.rewards.extend(reward)
+            optimal_reward = np.where(optimal_reward >= reward, optimal_reward, reward)
+            r_shaped = -np.max((optimal_reward - reward)/(reward + 1e-8), 0)
+            self.agent.buffer.rewards.extend(r_shaped)
 
             with open(self.cfgs.path.log_path, 'a', newline='') as csvfile:
                 for s, a, r, p in zip(state, action, reward, info['probabilities']):
                     writer = csv.writer(csvfile)
                     writer.writerow([int(step), s, a, a/s, r, p, self.env.num_miners])
             
-            state = normize(next_state, self.env.state_mean, self.env.state_std)
+            state = next_state
 
             if step % self.cfgs.train.update_freq == 0:
                 # * update models
                 log('Update...')
                 self.agent.update()
                 
-                # * test models
-                for _ in range(self.cfgs.train.test_steps):
-                    action = np.zeros_like(state)
+                # # * test models
+                # for _ in range(self.cfgs.train.test_steps):
+                #     action = np.zeros_like(state)
 
-                    for i in range(len(state)):
-                        action[i] = self.agent.select_action_without_exploration(state[i]) # ? no exploration in testing, no grad
+                #     for i in range(len(state)):
+                #         action[i] = self.agent.select_action_without_exploration(state[i]) # ? no exploration in testing, no grad
 
-                    state = unormize(state, self.env.state_mean, self.env.state_std)
-                    action = action * state
+                #     state = unormize(state, self.env.state_mean, self.env.state_std)
+                #     action = action * state
 
-                    next_state, reward, _, _ = self.env.step(action)
-                    state = normize(next_state, self.env.state_mean, self.env.state_std)
+                #     next_state, reward, _, _ = self.env.step(action)
+                #     state = normize(next_state, self.env.state_mean, self.env.state_std)
 
-                    # * save rewards and social warfare
-                    reward_list.extend(reward)
-                    sw_list.append(sum(reward))
+                #     # * save rewards and social warfare
+                #     reward_list.extend(reward)
+                #     sw_list.append(sum(reward))
 
                 # * print network gradient
                 # log('Print network gradient...')
@@ -98,4 +94,4 @@ class Trainer(object):
                 self.agent.decay_action_std()
                 log(f'Decay action std to {self.agent.actor.std}')
 
-            progress_bar.set_description(f"step: {step}, sw: {sum(reward)}")
+            progress_bar.set_description(f"step: {step}, loss: {-r_shaped:.4f}, std: {self.agent.actor.std:.4f}")
