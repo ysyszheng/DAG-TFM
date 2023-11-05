@@ -332,17 +332,23 @@ if __name__ == '__main__':
     # action = state
 
     # start_time = time.time()
-    # optimal_action_, _ = env.find_all_optim_action(action)
+    # env.find_optim_action(action)
     # end_time = time.time()
     # execution_time = end_time - start_time
-    # print(f'exec time: {execution_time} second')
+    # print(f'exec time: {execution_time} second') # 68s
+
+    # start_time = time.time()
+    # env.step(action)
+    # end_time = time.time()
+    # execution_time = end_time - start_time
+    # print(f'exec time: {execution_time} second') # 1.6s
     
     # _, _, _ , info = env.step(state)
     # for fee, prob in zip(state, info['probabilities']):
     #     print(fee, ',', prob)
 
 
-    cProfile.run('env.step(state)', sort='cumtime')
+    # cProfile.run('env.step(state)', sort='cumtime')
 
     # env.plot(env.f, (0, 1))
     # env.plot(env.invf, (env.f(1), 1))

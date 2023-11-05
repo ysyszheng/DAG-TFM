@@ -4,8 +4,9 @@ path:
   sw_path: ./results/data/es_sw.npy
 model:
 train:
-  epochs: 1000
-  save_freq: 1
-  cnt: 400
-  lr: 0.0005
-  batch_size: 4
+  iterations: 20
+  oracle_query_times: 50
+  alpha1: .01
+  mu1: .1
+  alpha2: .05
+  mu2: .05
