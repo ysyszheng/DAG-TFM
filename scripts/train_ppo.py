@@ -16,10 +16,11 @@ class Trainer(object):
         fix_seed(cfgs.seed)
 
         self.env = gym.make('gym_dag_env-v0', 
-            fee_data_path=cfgs.fee_data_path, max_agents_num=cfgs.max_agents_num,
+            fee_data_path=cfgs.fee_data_path, is_clip=cfgs.is_clip,
+            clip_value=cfgs.clip_value, max_agents_num=cfgs.max_agents_num,
             lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
         )
-        self.agent = PPO(self.env.observation_space, self.env.action_space, cfgs.model.actor_lr, cfgs.model.critic_lr, 
+        self.agent = PPO(1, 1, cfgs.model.actor_lr, cfgs.model.critic_lr, 
             cfgs.model.c1, cfgs.model.c2, cfgs.model.K_epochs, cfgs.model.gamma, 
             cfgs.model.eps_clip, cfgs.model.std_init, cfgs.model.std_decay, cfgs.model.std_min
         )
@@ -28,65 +29,58 @@ class Trainer(object):
         state = self.env.reset()
         reward_list = []
         sw_list = []
+        epsilon_list = []
 
         with open(self.cfgs.path.log_path, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
-            writer.writerow(["update step", "private value", "tx fee", "incentive awareness", 
-                             "revenue", "probability", "miner numbers"])
+            writer.writerow(["step", "private value", "tx fee", "optimal tx fee", 
+                        "revenue", "optimal revenue", "epsilon", "reward shaped",
+                        "probability", "incentive awareness", "miner numbers", "is included"])
 
         progress_bar = tqdm(range(1, self.cfgs.train.steps+1))
         for step in progress_bar:
-            action = self.agent.select_action(state)
-            _, optimal_reward = self.env.find_all_optim_action(action)
+            action = np.zeros_like(state)
+            for i in range(len(state)):
+                action[i] = self.agent.select_action(state[i])
+            
+            optimal_action, optimal_reward = self.env.find_all_optim_action(action)
 
             next_state, reward, _, info = self.env.step(action)
+
             optimal_reward = np.where(optimal_reward >= reward, optimal_reward, reward)
-            r_shaped = -np.max((optimal_reward - reward)/(reward + 1e-8), 0)
+            optimal_action = np.where(optimal_reward >= reward, optimal_action, action)
+
+            epsilon = (optimal_reward - reward)/state # epsilon-bayesian-nash
+            r_shaped = -epsilon * 1e3
             self.agent.buffer.rewards.extend(r_shaped)
 
+            reward_list.append(reward)
+            sw_list.append(info["total_private_value"])
+            epsilon_list.append(epsilon)
+
             with open(self.cfgs.path.log_path, 'a', newline='') as csvfile:
-                for s, a, r, p in zip(state, action, reward, info['probabilities']):
+                for s, a, oa, rev, orev, e, rs, p, included in zip(state, action, 
+                                    optimal_action, reward, optimal_reward, epsilon, 
+                                    r_shaped, info['probabilities'], info['included_txs']):
                     writer = csv.writer(csvfile)
-                    writer.writerow([int(step), s, a, a/s, r, p, self.env.num_miners])
-            
+                    writer.writerow([int(step), s, a, oa, rev, orev, e, rs, p, a/s, self.env.num_miners, int(included)])
+
             state = next_state
+
+            progress_bar.set_description(f"step: {step}, epsilon: {np.max(epsilon):.4f}, r_shaped: {np.min(r_shaped):.4f}, std: {self.agent.actor.std:.4f}")
+            print(f'step: {step}, epsilon: {np.max(epsilon):.4f}, r_shaped: {np.min(r_shaped):.4f}, std: {self.agent.actor.std:.4f}')
 
             if step % self.cfgs.train.update_freq == 0:
                 # * update models
-                log('Update...')
+                log('Update models & Save datas & Save models...')
                 self.agent.update()
                 
-                # # * test models
-                # for _ in range(self.cfgs.train.test_steps):
-                #     action = np.zeros_like(state)
-
-                #     for i in range(len(state)):
-                #         action[i] = self.agent.select_action_without_exploration(state[i]) # ? no exploration in testing, no grad
-
-                #     state = unormize(state, self.env.state_mean, self.env.state_std)
-                #     action = action * state
-
-                #     next_state, reward, _, _ = self.env.step(action)
-                #     state = normize(next_state, self.env.state_mean, self.env.state_std)
-
-                #     # * save rewards and social warfare
-                #     reward_list.extend(reward)
-                #     sw_list.append(sum(reward))
-
-                # * print network gradient
-                # log('Print network gradient...')
-                # for name, param in self.agent.actor.named_parameters():
-                #     if param.requires_grad:
-                #         log(f'Actor: {name}, gradient: {param.grad}')
-                # for name, param in self.agent.critic.named_parameters():
-                #     if param.requires_grad:
-                #         log(f'Critic: {name}, gradient: {param.grad}')
-
+                # * save datas
                 np.save(self.cfgs.path.rewards_path, np.array(reward_list))
                 np.save(self.cfgs.path.sw_path, np.array(sw_list))
+                np.save(self.cfgs.path.epsilon_path, np.array(epsilon_list))
 
                 # * save models
-                log('Save models...')
                 torch.save(self.agent.actor.state_dict(), self.cfgs.path.actor_model_path)
                 torch.save(self.agent.critic.state_dict(), self.cfgs.path.critic_model_path)
 
@@ -94,4 +88,3 @@ class Trainer(object):
                 self.agent.decay_action_std()
                 log(f'Decay action std to {self.agent.actor.std}')
 
-            progress_bar.set_description(f"step: {step}, loss: {-r_shaped:.4f}, std: {self.agent.actor.std:.4f}")

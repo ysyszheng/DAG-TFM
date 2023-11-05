@@ -9,14 +9,13 @@ from utils.utils import log
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, std_init):
         super(Actor, self).__init__()
-        # ? Need non-linear transformation for input or not
         self.net = nn.Sequential(
             nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
             nn.Linear(64, action_dim),
-            # nn.Tanh(), # ! Sigmoid make gradient vanish, try tan
+            nn.Softplus(),
         )
         self.std = std_init
 
@@ -88,8 +87,6 @@ class PPO(object):
         return a.cpu().data.numpy().flatten()
 
     def select_action_without_exploration(self, state):
-        # ! This function is only used for testing
-        # ! No exploration
         state = torch.FloatTensor(state.reshape(1, -1)).to(self.device)
         with torch.no_grad():
             a = self.actor.act_without_exploration(state)

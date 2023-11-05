@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from utils.utils import log
 
 
 class Actor(nn.Module):
@@ -13,9 +14,10 @@ class Actor(nn.Module):
             nn.Linear(256, 256),
             nn.ReLU(),
             nn.Linear(256, action_dim),
-            nn.Tanh(),
+            nn.Softplus(),
         )
         self.std = std
+        self.initialize_weights()
 
     def forward(self, state):
         return self.net(state)
@@ -29,6 +31,12 @@ class Actor(nn.Module):
         action = np.random.normal(self.act(state), self.std)
         return action
 
+    def initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
+                nn.init.constant_(m.bias, 0.0)
+
 class Critic(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(Critic, self).__init__()
@@ -39,10 +47,16 @@ class Critic(nn.Module):
             nn.ReLU(),
             nn.Linear(256, 1)
         )
+        self.initialize_weights()
 
     def forward(self, state, action):
         return self.net(torch.cat([state, action], 1))
 
+    def initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
+                nn.init.constant_(m.bias, 0.0)
 
 class DDPG(object):
     def __init__(self,
@@ -81,11 +95,11 @@ class DDPG(object):
 
     def select_action_with_exploration(self, state):
         state = torch.FloatTensor(state.reshape(1, -1)).to(self.device)
-        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
-
         return self.actor.act_with_exploration(state) \
           if np.random.rand() < self.epsilon else self.actor.act(state)
 
+    def decay_epsilon(self):
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
     def update(self, replay_buffer, iterations):
         for _ in range(iterations):

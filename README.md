@@ -40,6 +40,8 @@ Run
 ```bash
 # Train Agent
 python3 ./run.py --method [DDPG/PPO/NN] --mode train --cfg ./config/[ddpg/ppo/nn].yaml
+# i.e. python3 -u ./run.py --method PPO --mode train --cfg ./config/ppo.yaml > ./results/log/ppo.log
+# i.e. python3 -u ./run.py --method DDPG --mode train --cfg ./config/ddpg.yaml > ./results/log/ddpg.log
 # Test throughputs
 python3 ./run.py --method [DDPG/PPO/NN] --mode test --cfg ./config/[ddpg/ppo/nn].yaml
 # Eval equilibrium

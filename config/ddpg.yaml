@@ -4,16 +4,17 @@ path:
   log_path: ./results/data/ddpg_log.csv
   rewards_path: ./results/data/ddpg_rewards.npy
   sw_path: ./results/data/ddpg_sw.npy
+  epsilon_path: ./results/data/ddpg_epsilon.npy
 model:
   gamma: 0.99 # not used
   actor_lr: .0001
   critic_lr: .001
   tau: 0.001
   batch_size: 64
-  std: 0.2
+  std: 50 # 50
   memory_size: 10000
   epsilon_min: 0.01
-  epsilon_decay: 0.999
+  epsilon_decay: 0.95
   iterations: 1
 train:
   steps: 3000

@@ -7,6 +7,7 @@ import pandas as pd
 
 def plot(file_path, label):
     data = np.load(file_path)
+    # data = np.max(data, axis=1)
     
     plt.figure()
     plt.plot(data, label=label)

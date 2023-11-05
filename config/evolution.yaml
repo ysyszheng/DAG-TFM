@@ -1,0 +1,11 @@
+path:
+  model_path: ./results/models/es.pth
+  log_path: ./results/data/es_log.csv
+  sw_path: ./results/data/es_sw.npy
+model:
+train:
+  epochs: 1000
+  save_freq: 1
+  cnt: 400
+  lr: 0.0005
+  batch_size: 4

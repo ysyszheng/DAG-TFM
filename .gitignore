@@ -4,7 +4,6 @@ test/
 tmp/
 log/
 *.log
-test*
 backup/
 data/*.tsv.gz
 data/*.tsv

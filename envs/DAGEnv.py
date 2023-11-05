@@ -9,9 +9,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 warnings.filterwarnings("ignore")
 
 import gym
-from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import Pool
-import threading
+import concurrent.futures as cf
+import multiprocessing as mp
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq, fsolve, root_scalar, minimize_scalar
 from gym import spaces
@@ -51,10 +50,12 @@ class DAGEnv(gym.Env):
             low=0, high=np.inf, shape=(max_agents_num,), dtype=np.float32)
 
         self.fee_list = np.load(fee_data_path)
+        self.fee_list = self.fee_list[self.fee_list > 0] # remove 0
         if self.is_clip:
             self.fee_list = self.fee_list[self.fee_list <= self.clip_value]
         self.state_mean = np.mean(self.fee_list)
         self.state_std = np.std(self.fee_list)
+
 
     def f(self, p):
         assert np.all(p >= 0 and p <= 1)
@@ -70,6 +71,7 @@ class DAGEnv(gym.Env):
             ratios[mask] = (1 - np.exp(-self.lambd * self.delta * p[mask])) / (self.lambd * self.delta * p[mask])
             return ratios
 
+
     def invf(self, y):
         # ! Don't use this function, use invf_with_clip instead
         # bracket should be [0, np.inf]
@@ -83,6 +85,7 @@ class DAGEnv(gym.Env):
                 roots[i] = result.root
             return roots
         
+
     def invf_with_clip(self, y):
         assert np.all(y >= 0 and y <= 1)
         if np.isscalar(y):
@@ -101,15 +104,26 @@ class DAGEnv(gym.Env):
                     roots[i] = result.root
             return roots
 
+
     def reset(self):
         # fix the number of txs in delta time (fix number of agents)
         self.num_agents = self.max_agents_num
         self.state = np.array([self.fee_list[i] for i in np.random.randint(len(self.fee_list), size=self.num_agents)])
         # miner numbers in delta time, Poisson distribution or fixed number
-        # self.num_miners = 1 + np.random.poisson(self.lambd * self.delta)
-        self.num_miners = self.lambd * self.delta
+        self.num_miners = 1 + np.random.poisson(self.lambd * self.delta)
+        # self.num_miners = self.lambd * self.delta
 
         return self.state
+    
+
+    def step_without_packing(self, actions):
+        # calculate rewards and probabilities
+        rewards, _ = self.calculate_rewards(actions)
+        # update state
+        done = True
+        self.reset()
+        return self.state, rewards, done
+
 
     def step(self, actions):
         # calculate rewards and probabilities
@@ -118,34 +132,16 @@ class DAGEnv(gym.Env):
         # calculate throughput and social welfare (total private value)
         included_txs = []
         # use marginal probabilities
-        def select_indices(_):
+        for _ in range(self.num_agents):
             random_numbers = np.random.rand(self.num_agents)
             mask = random_numbers < probabilities
             selected_indices = np.where(mask)[0].tolist()
-            return selected_indices
-
-        with ThreadPoolExecutor(max_workers=self.num_miners) as executor:
-            for result in executor.map(select_indices, range(self.num_miners)):
-                included_txs.extend(result)
-
-        # # use combinations
-        # def select_indices(_):
-        #     threshold = 1e-5
-        #     non_zero_indices = list(np.where(probabilities > 0)[0])
-        #     probabilities_without_zero = probabilities[non_zero_indices].tolist()
-        #     if abs(sum(probabilities_without_zero) - self.b) <= threshold:
-        #         for _ in range(self.num_miners):
-        #             event_set, p = get_dist_from_margin(self.b, len(probabilities_without_zero), probabilities_without_zero)
-        #             p = [i / sum(p) for i in p] # sum(p) approx 1
-        #             txs = [non_zero_indices[i] for i in list(random.choices(event_set, p, k=1)[0])]
-        #             included_txs.extend(txs)
-        #     elif sum(probabilities_without_zero) < self.b:
-        #         for _ in range(self.num_miners):
-        #             included_txs.extend(non_zero_indices)
-        #     else:
-        #         raise ValueError
+            included_txs.extend(selected_indices)
 
         unique_txs = set(included_txs)
+        included_txs_bool = np.zeros_like(self.state)
+        for i in unique_txs:
+            included_txs_bool[i] = 1
         num_unique_txs = len(unique_txs)
         throughput_tps = num_unique_txs / self.delta
         optimal_throughput_tps = self.num_miners * self.b / self.delta
@@ -157,7 +153,9 @@ class DAGEnv(gym.Env):
 
         return self.state, rewards, done, \
             {"probabilities": probabilities, "throughput": throughput_tps, \
-             "optimal": optimal_throughput_tps, "total_private_value": total_private_value}
+             "optimal": optimal_throughput_tps, "total_private_value": total_private_value, \
+             "included_txs": included_txs_bool}
+
 
     def find_optim_action(self, actions, idx=0):
         assert idx >= 0 and idx < self.num_agents
@@ -175,20 +173,34 @@ class DAGEnv(gym.Env):
         # log(f'idx: {idx}, state: {self.state[idx]}, optim_action: {optim_action}, max_reward: {max_reward}')
         return optim_action, max_reward
 
+
     def find_all_optim_action(self, actions):
         optim_actions = np.zeros_like(actions)
         max_rewards = np.zeros_like(actions)
-        # with ThreadPoolExecutor(max_workers=self.num_agents) as executor:
-        #     for idx, result in enumerate(executor.map(self.find_optim_action, 
-        #                     [actions for _ in range(self.num_agents)], range(self.num_agents))):
-        #         optim_actions[idx], max_rewards[idx] = result
-        with Pool(processes=8) as pool:
+
+        with mp.Pool(processes=mp.cpu_count()) as pool:
             results = pool.starmap(self.find_optim_action, 
                             [(actions, idx) for idx in range(self.num_agents)])
             for idx, result in enumerate(results):
                 optim_actions[idx], max_rewards[idx] = result
 
         return optim_actions, max_rewards
+
+
+    def find_nash_equilibrium(self, epsilon=1e-4): # assume has common knowledge
+        action = np.random.random(self.state.shape) * self.state
+        reward = self.calculate_rewards(action)[0]
+        flag = False
+        while not flag:
+            optim_action, optim_reward = self.find_all_optim_action(action)
+            loss = np.max((optim_reward-reward)/(reward+1e-6))
+            if loss <= epsilon:
+                flag = True
+            action = optim_action
+            reward = optim_reward
+            # log(action, loss)
+        return action, reward
+
 
     def calculate_probabilities(self, actions: np.ndarray) -> np.ndarray:
         # probability of being included in the block
@@ -213,11 +225,12 @@ class DAGEnv(gym.Env):
         def G(l, z):
             assert l >= 0 and l < self.num_agents
             res = 0
-            with ThreadPoolExecutor(max_workers=l+1) as executor:
-                for h, result in enumerate(executor.map(self.invf_with_clip, z/(v[:l+1]))):
-                    res += k[h] * result
-            # for h in range(l+1):
-            #     res += k[h] * self.invf_with_clip(z/(v[h]))
+            # with mp.Pool(processes=mp.cpu_count()) as pool:
+            #     results = pool.map(self.invf_with_clip, z/(v[:l+1]))
+            #     for h, result in enumerate(results):
+            #         res += k[h] * result
+            for h in range(l+1):
+                res += k[h] * self.invf_with_clip(z/(v[h]))
             return (res - self.b)
 
         def GG(l): return G(int(l), v[int(l)]) # consider l as an integer
@@ -249,6 +262,7 @@ class DAGEnv(gym.Env):
 
         return probabilities
 
+
     def calculate_rewards(self, actions):
         rewards = np.zeros(self.num_agents)
 
@@ -267,6 +281,7 @@ class DAGEnv(gym.Env):
                 (private_value - offer_price)
 
         return rewards, probabilities
+
 
     def plot(self, func=None, bounds=(-5, 5), num=1000):
         x = np.linspace(bounds[0], bounds[1], num)
@@ -304,32 +319,30 @@ if __name__ == '__main__':
             is_burn=base_cfgs.is_burn
     )
     state = env.reset()
+    
+    # print('step', ',', 'private value', ',', 'optimal action')
+    # for i in tqdm(range(100)):
+    #     action, reward = env.find_nash_equilibrium()
+        
+    #     for s, a, r in zip(state, action, reward):
+    #         print(i, ',', s,',',a ,',',r)
 
-    # just for test
-    action = state
 
-    # optimal_action = np.zeros_like(state)
+    # # just for test
+    # action = state
+
     # start_time = time.time()
-    # for idx in range(env.num_agents):
-    #     optimal_action[idx], _ =env.find_optim_action(action, idx=idx)
+    # optimal_action_, _ = env.find_all_optim_action(action)
     # end_time = time.time()
     # execution_time = end_time - start_time
     # print(f'exec time: {execution_time} second')
-
-    start_time = time.time()
-    optimal_action_, _ = env.find_all_optim_action(action)
-    end_time = time.time()
-    execution_time = end_time - start_time
-    print(f'exec time: {execution_time} second')
     
-    # print(f'{optimal_action == optimal_action_}')
-
     # _, _, _ , info = env.step(state)
     # for fee, prob in zip(state, info['probabilities']):
     #     print(fee, ',', prob)
 
 
-    # cProfile.run('env.step(state)', sort='cumtime')
+    cProfile.run('env.step(state)', sort='cumtime')
 
     # env.plot(env.f, (0, 1))
     # env.plot(env.invf, (env.f(1), 1))

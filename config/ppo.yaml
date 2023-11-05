@@ -4,6 +4,7 @@ path:
   log_path: ./results/data/ppo_log.csv
   rewards_path: ./results/data/ppo_rewards.npy
   sw_path: ./results/data/ppo_sw.npy
+  epsilon_path: ./results/data/ppo_epsilon.npy
 model:
   gamma: 0.99 # not used, because done is always True
   actor_lr: .0003
@@ -12,14 +13,14 @@ model:
   c2: .01
   K_epochs: 1
   eps_clip: 0.2
-  std_init: .4
-  std_decay: .9
-  std_min: .01 # 1sigma: 0.6826, 2simga:0.9544, 3simga: 0.9974
+  std_init: 100
+  std_decay: .999
+  std_min: 10 # 1sigma: 0.6826, 2simga:0.9544, 3simga: 0.9974
 train:
   steps: 100000
   test_steps: 20
   std_decay_freq: 120
-  update_freq: 40 # update_freq = test_freq = save_models_freq = print_gradients_freq
+  update_freq: 20 # update_freq = test_freq = save_models_freq = print_gradients_freq
 test:
   steps: 100
 eval:
