@@ -8,6 +8,9 @@ import csv
 import torch
 import gym
 import multiprocessing as mp
+import concurrent.futures as cf
+import logging
+import time
 
 
 class Trainer(object):
@@ -108,22 +111,20 @@ class Trainer(object):
         return V - DEV
 
 
-    def MinusRegret(self):
+    def MinusRegret(self, strategies: Net):
         """consider regret of agent 0
         directly use `env.find_optim_action()`
         """
         state = self.env.reset()
 
         regret = 0
-        progress_bar = tqdm(range(self.cfgs.train.oracle_query_times))
-        for r in progress_bar:
-            action = self.strategies(torch.FloatTensor(state).to(torch.float64)\
+        for _ in range(self.cfgs.train.oracle_query_times):
+            action = strategies(torch.FloatTensor(state).to(torch.float64)\
               .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
             _, opt_reward = self.env.find_optim_action(action, idx=0)
             next_state, reward, _ = self.env.step_without_packing(action)
             regret += (opt_reward - reward[0]) / state[0]
             state = next_state
-            progress_bar.set_description(f'regret: {regret / (r + 1)}')
 
         regret /= self.cfgs.train.oracle_query_times
         return -regret
@@ -136,31 +137,34 @@ class Trainer(object):
         m, v = 0, 0
         for t in range(self.cfgs.train.iterations):
             print(f'************* iter: {t} *************')
+            start_time = time.time()
+            print(f'start time: {time.asctime(time.localtime(start_time))}')
+
+            print(f'regert (before update in this iter): {-self.MinusRegret(self.strategies)}')
+
             epsilon = np.random.normal(0, 1, size=self.J)
             r = np.zeros(self.J)
-            # f = np.zeros(self.J) # fitness-shaping
 
             # NES
-            for j in range(self.J):
-                for param in self.strategies.parameters():
+            def worker(j):
+                strategies_copy = Net(num_agents=1, num_actions=1).to(self.device)
+                strategies_copy.load_state_dict(self.strategies.state_dict())
+
+                for param in strategies_copy.parameters():
                     param.data += mu2 * epsilon[j]
 
-                # r_j_plus = self.OriginalMinusRegret(alpha1, mu1)
-                r_j_plus = self.MinusRegret()
+                r_j_plus = self.MinusRegret(strategies_copy)
 
-                for param in self.strategies.parameters():
+                for param in strategies_copy.parameters():
                     param.data -= 2 * mu2 * epsilon[j]
 
-                # r_j_minus = self.OriginalMinusRegret(alpha1, mu1)
-                r_j_minus = self.MinusRegret()
+                r_j_minus = self.MinusRegret(strategies_copy)
 
                 r[j] = (r_j_plus - r_j_minus)
-
-                for param in self.strategies.parameters():
-                    param.data += mu2 * epsilon[j]
-
-            # use fitness-shaping
-            # grad_list = r * epsilon / mu2
+            
+            # multi process
+            with cf.ProcessPoolExecutor(max_workers=mp.cpu_count()) as e:
+                e.map(worker, range(self.J))
 
             # Adam
             gradient = np.sum(r * epsilon) / (self.J * mu2)
@@ -173,6 +177,10 @@ class Trainer(object):
                 param.data += alpha2 * m_hat / (np.sqrt(v_hat) + eps)
 
             torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
+
+            end_time = time.time()
+            print(f'end time: {time.asctime(time.localtime(end_time))}')
+            print(f'execute time: {end_time - start_time} sec')
 
         # return self.MinusRegret()
                 
