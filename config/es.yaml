@@ -4,7 +4,7 @@ path:
   sw_path: ./results/data/es_sw.npy
 model:
 train:
-  iterations: 20
+  iterations: 100
   oracle_query_times: 50
   alpha1: .01
   mu1: .1

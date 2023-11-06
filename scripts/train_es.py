@@ -7,10 +7,10 @@ from easydict import EasyDict as edict
 import csv
 import torch
 import gym
-import multiprocessing as mp
 import concurrent.futures as cf
 import logging
 import time
+import torch.multiprocessing as mp
 
 
 class Trainer(object):
@@ -19,7 +19,8 @@ class Trainer(object):
         self.cfgs = cfgs
         fix_seed(cfgs.seed)
 
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cpu')
 
         self.env = gym.make('gym_dag_env-v0', 
             fee_data_path=cfgs.fee_data_path, is_clip=cfgs.is_clip, 
@@ -31,8 +32,7 @@ class Trainer(object):
         self.new_strategies = Net(num_agents=1, num_actions=1).to(self.device)
         
         total_params = sum(p.numel() for p in self.strategies.parameters())
-        # self.J = int(4 + 3 * np.floor(np.log(total_params))) # 25
-        self.J = 10
+        self.J = int(4 + 3 * np.floor(np.log(total_params))) # 25
 
 
     def OriginalMinusRegret(self, alpha1=.01, mu1=.1):
@@ -129,6 +129,31 @@ class Trainer(object):
         regret /= self.cfgs.train.oracle_query_times
         return -regret
 
+
+    def NESworker(self, j, mu2, epsilon, r):
+        """Natural Evolution Strategies
+        """
+        print(f'worker {j} start')
+        strategies_copy = Net(num_agents=1, num_actions=1).to(self.device)
+        strategies_copy.load_state_dict(self.strategies.state_dict())
+
+        for param in strategies_copy.parameters():
+            param.data += mu2 * epsilon[j]
+
+        print(f'calc r_{j}_plus')
+        r_j_plus = self.MinusRegret(strategies_copy)
+        print(f'r_{j}_plus: {r_j_plus}')
+
+        for param in strategies_copy.parameters():
+            param.data -= 2 * mu2 * epsilon[j]
+
+        print(f'calc r_{j}_minus')
+        r_j_minus = self.MinusRegret(strategies_copy)
+        print(f'r_{j}_minus: {r_j_minus}')
+
+        r[j] = (r_j_plus - r_j_minus)
+        print(f'worker {j} end, r_{j}_plus: {r_j_plus}, r_{j}_minus: {r_j_minus}, r_{j}: {r[j]}, epsilon_{j}: {epsilon[j]}')
+
     
     def MiniMax(self, alpha1, mu1, alpha2, mu2, beta1=.9, beta2=.999, eps=1e-8):
         """min regret
@@ -144,27 +169,10 @@ class Trainer(object):
 
             epsilon = np.random.normal(0, 1, size=self.J)
             r = np.zeros(self.J)
-
-            # NES
-            def worker(j):
-                strategies_copy = Net(num_agents=1, num_actions=1).to(self.device)
-                strategies_copy.load_state_dict(self.strategies.state_dict())
-
-                for param in strategies_copy.parameters():
-                    param.data += mu2 * epsilon[j]
-
-                r_j_plus = self.MinusRegret(strategies_copy)
-
-                for param in strategies_copy.parameters():
-                    param.data -= 2 * mu2 * epsilon[j]
-
-                r_j_minus = self.MinusRegret(strategies_copy)
-
-                r[j] = (r_j_plus - r_j_minus)
             
             # multi process
-            with cf.ProcessPoolExecutor(max_workers=mp.cpu_count()) as e:
-                e.map(worker, range(self.J))
+            with mp.Pool(processes=mp.cpu_count()) as p:
+                p.starmap(self.NESworker, [(j, mu2, epsilon, r) for j in range(self.J)])
 
             # Adam
             gradient = np.sum(r * epsilon) / (self.J * mu2)
@@ -173,8 +181,12 @@ class Trainer(object):
             m_hat = m / (1 - beta1 ** (t + 1))
             v_hat = v / (1 - beta2 ** (t + 1))
 
+            delta_param = alpha2 * m_hat / (np.sqrt(v_hat) + eps)
+            print(f'gradient: {gradient}, delta param: {delta_param}')
+            delta_param = gradient # TODO: delete
+
             for param in self.strategies.parameters():
-                param.data += alpha2 * m_hat / (np.sqrt(v_hat) + eps)
+                param.data += delta_param
 
             torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
 
@@ -186,5 +198,7 @@ class Trainer(object):
                 
 
     def training(self):
+        fix_seed(self.cfgs.seed)
+        mp.set_start_method('spawn')
         self.MiniMax(self.cfgs.train.alpha1, self.cfgs.train.mu1, self.cfgs.train.alpha2, self.cfgs.train.mu2)
         torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
