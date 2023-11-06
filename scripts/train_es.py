@@ -7,6 +7,7 @@ from easydict import EasyDict as edict
 import csv
 import torch
 import gym
+import multiprocessing as mp
 
 
 class Trainer(object):
@@ -27,7 +28,8 @@ class Trainer(object):
         self.new_strategies = Net(num_agents=1, num_actions=1).to(self.device)
         
         total_params = sum(p.numel() for p in self.strategies.parameters())
-        self.J = int(4 + 3 * np.floor(np.log(total_params))) # 25
+        # self.J = int(4 + 3 * np.floor(np.log(total_params))) # 25
+        self.J = 10
 
 
     def OriginalMinusRegret(self, alpha1=.01, mu1=.1):
@@ -118,19 +120,25 @@ class Trainer(object):
             action = self.strategies(torch.FloatTensor(state).to(torch.float64)\
               .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
             _, opt_reward = self.env.find_optim_action(action, idx=0)
-            state, reward, _ = self.env.step_without_packing(action)
+            next_state, reward, _ = self.env.step_without_packing(action)
             regret += (opt_reward - reward[0]) / state[0]
+            state = next_state
             progress_bar.set_description(f'regret: {regret / (r + 1)}')
 
         regret /= self.cfgs.train.oracle_query_times
-        return regret
+        return -regret
 
     
-    def MiniMax(self, alpha1, mu1, alpha2, mu2):
-        for iter in range(self.cfgs.train.iterations):
-            print(f'************* iter: {iter} *************')
+    def MiniMax(self, alpha1, mu1, alpha2, mu2, beta1=.9, beta2=.999, eps=1e-8):
+        """min regret
+        use adam to optimize lr alpha2
+        """
+        m, v = 0, 0
+        for t in range(self.cfgs.train.iterations):
+            print(f'************* iter: {t} *************')
             epsilon = np.random.normal(0, 1, size=self.J)
             r = np.zeros(self.J)
+            # f = np.zeros(self.J) # fitness-shaping
 
             # NES
             for j in range(self.J):
@@ -151,8 +159,18 @@ class Trainer(object):
                 for param in self.strategies.parameters():
                     param.data += mu2 * epsilon[j]
 
+            # use fitness-shaping
+            # grad_list = r * epsilon / mu2
+
+            # Adam
+            gradient = np.sum(r * epsilon) / (self.J * mu2)
+            m = beta1 * m + (1 - beta1) * gradient
+            v = beta2 * v + (1 - beta2) * gradient ** 2
+            m_hat = m / (1 - beta1 ** (t + 1))
+            v_hat = v / (1 - beta2 ** (t + 1))
+
             for param in self.strategies.parameters():
-                param.data += alpha2 / (self.J * mu2) * sum(r * epsilon)
+                param.data += alpha2 * m_hat / (np.sqrt(v_hat) + eps)
 
             torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
 
