@@ -17,11 +17,13 @@ class Net(nn.Module):
             param.data = param.data.to(torch.float64)
 
 
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+    def forward(self, s):
+        assert torch.all(s > 0)
+        a = F.relu(self.fc1(s))
+        a = F.relu(self.fc2(a))
+        a = self.fc3(a)
+        a = torch.min(torch.max(a, torch.zeros_like(a)), s)
+        return a
 
 
     def xavier_init(self):

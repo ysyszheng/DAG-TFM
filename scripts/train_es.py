@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 from envs.DAGEnv import DAGEnv
 from agents.es import Net
@@ -119,6 +123,7 @@ class Trainer(object):
 
         regret = 0
         for _ in range(self.cfgs.train.oracle_query_times):
+            # TODO: parallel
             action = strategies(torch.FloatTensor(state).to(torch.float64)\
               .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
             _, opt_reward = self.env.find_optim_action(action, idx=0)
@@ -151,8 +156,9 @@ class Trainer(object):
         r_j_minus = self.MinusRegret(strategies_copy)
         print(f'r_{j}_minus: {r_j_minus}')
 
-        r[j] = (r_j_plus - r_j_minus)
-        print(f'worker {j} end, r_{j}_plus: {r_j_plus}, r_{j}_minus: {r_j_minus}, r_{j}: {r[j]}, epsilon_{j}: {epsilon[j]}')
+        r_j = r_j_plus - r_j_minus
+        print(f'worker {j} end, r_{j}_plus: {r_j_plus}, r_{j}_minus: {r_j_minus}, r_{j}: {r_j}, epsilon_{j}: {epsilon[j]}')
+        return j, r_j
 
     
     def MiniMax(self, alpha1, mu1, alpha2, mu2, beta1=.9, beta2=.999, eps=1e-8):
@@ -172,9 +178,15 @@ class Trainer(object):
             
             # multi process
             with mp.Pool(processes=mp.cpu_count()) as p:
-                p.starmap(self.NESworker, [(j, mu2, epsilon, r) for j in range(self.J)])
+                # TODO: -self.MinusRegret(self.strategies) parallel
+                results = p.starmap(self.NESworker, [(j, mu2, epsilon, r) for j in range(self.J)])
+                for j, r_j in results:
+                    r[j] = r_j
 
             # Adam
+            print(r)
+            print(epsilon)
+            print(self.J, mu2)
             gradient = np.sum(r * epsilon) / (self.J * mu2)
             m = beta1 * m + (1 - beta1) * gradient
             v = beta2 * v + (1 - beta2) * gradient ** 2
@@ -183,7 +195,6 @@ class Trainer(object):
 
             delta_param = alpha2 * m_hat / (np.sqrt(v_hat) + eps)
             print(f'gradient: {gradient}, delta param: {delta_param}')
-            delta_param = gradient # TODO: delete
 
             for param in self.strategies.parameters():
                 param.data += delta_param
@@ -192,7 +203,7 @@ class Trainer(object):
 
             end_time = time.time()
             print(f'end time: {time.asctime(time.localtime(end_time))}')
-            print(f'execute time: {end_time - start_time} sec')
+            print(f'execute time: {(end_time - start_time) / 60} min')
 
         # return self.MinusRegret()
                 
@@ -202,3 +213,25 @@ class Trainer(object):
         mp.set_start_method('spawn')
         self.MiniMax(self.cfgs.train.alpha1, self.cfgs.train.mu1, self.cfgs.train.alpha2, self.cfgs.train.mu2)
         torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
+
+
+if __name__ == '__main__':
+    import yaml
+    BASE_CONFIGS_PATH = r'./config/base.yaml'
+    ES_CONFIGS_PATH = r'./config/es.yaml'
+
+    with open(BASE_CONFIGS_PATH, 'r') as cfgs_file:
+        base_cfgs = yaml.load(cfgs_file, Loader=yaml.FullLoader)
+    base_cfgs = edict(base_cfgs)
+
+    if ES_CONFIGS_PATH is not None:
+        with open(ES_CONFIGS_PATH, 'r') as cfgs_file:
+            cfgs = yaml.load(cfgs_file, Loader=yaml.FullLoader)
+    else:
+        cfgs = {}
+    cfgs = edict(cfgs)
+    cfgs.update(base_cfgs)
+
+    trainer = Trainer(cfgs)
+    trainer.strategies.load_state_dict(torch.load(cfgs.path.model_path))
+    print(f'regert: {-trainer.MinusRegret(trainer.strategies)}')
