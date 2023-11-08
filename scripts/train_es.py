@@ -33,83 +33,81 @@ class Trainer(object):
         )
 
         self.strategies = Net(num_agents=1, num_actions=1).to(self.device)
-        self.new_strategies = Net(num_agents=1, num_actions=1).to(self.device)
         
         total_params = sum(p.numel() for p in self.strategies.parameters())
         self.J = int(4 + 3 * np.floor(np.log(total_params))) # 25
 
 
-    def OriginalMinusRegret(self, alpha1=.01, mu1=.1):
+    def OriginalMinusRegret(self, strategies: Net, alpha1=.01, mu1=.1):
         '''consider regret of agent 0
         original algorithm
         '''
-        self.new_strategies.load_state_dict(self.strategies.state_dict())
         state = self.env.reset()
 
         # Oracle
         V = 0
-        for _ in range(self.cfgs.train.oracle_query_times):
+        for _ in range(self.cfgs.train.inner_oracle_query_times):
             action = self.strategies(torch.FloatTensor(state).to(torch.float64)\
               .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
             state, reward, _ = self.env.step_without_packing(action)
             V += reward[0]
-        V /= self.cfgs.train.oracle_query_times
+        V /= self.cfgs.train.inner_oracle_query_times
 
         # NES
-        for _ in tqdm(range(self.cfgs.train.iterations)):
+        for _ in range(self.cfgs.train.inner_iterations):
             epsilon = np.random.normal(0, 1, size=self.J)
             r = np.zeros(self.J)
 
             for j in range(self.J):
-                for param in self.new_strategies.parameters():
+                for param in strategies.parameters():
                     param.data += mu1 * epsilon[j]
                 
                 # Oracle
                 r_j_plus = 0
-                for _ in range(self.cfgs.train.oracle_query_times):
-                    action0 = self.new_strategies(torch.FloatTensor(state[0].reshape(-1, 1)).to(torch.float64).to(self.device))\
+                for _ in range(self.cfgs.train.inner_oracle_query_times):
+                    action0 = strategies(torch.FloatTensor(state[0].reshape(-1, 1)).to(torch.float64).to(self.device))\
                       .reshape(1).detach().cpu().numpy()
                     action = self.strategies(torch.FloatTensor(state[1:]).reshape(-1, 1).to(torch.float64).to(self.device))\
                       .squeeze().detach().cpu().numpy()
                     action = np.concatenate((action0, action))
                     state, reward, _ = self.env.step_without_packing(action)
                     r_j_plus += reward[0]
-                r_j_plus /= self.cfgs.train.oracle_query_times
+                r_j_plus /= self.cfgs.train.inner_oracle_query_times
 
-                for param in self.new_strategies.parameters():
+                for param in strategies.parameters():
                     param.data -= 2 * mu1 * epsilon[j]
 
                 # Oracle
                 r_j_minus = 0
-                for _ in range(self.cfgs.train.oracle_query_times):
-                    action0 = self.new_strategies(torch.FloatTensor(state[0].reshape(-1, 1)).to(torch.float64).to(self.device))\
+                for _ in range(self.cfgs.train.inner_oracle_query_times):
+                    action0 = strategies(torch.FloatTensor(state[0].reshape(-1, 1)).to(torch.float64).to(self.device))\
                       .reshape(1).detach().cpu().numpy()
                     action = self.strategies(torch.FloatTensor(state[1:]).reshape(-1, 1).to(torch.float64).to(self.device))\
                       .squeeze().detach().cpu().numpy()
                     action = np.concatenate((action0, action))
                     state, reward, _ = self.env.step_without_packing(action)
                     r_j_minus += reward[0]
-                r_j_minus /= self.cfgs.train.oracle_query_times
+                r_j_minus /= self.cfgs.train.inner_oracle_query_times
 
                 r[j] = (r_j_plus - r_j_minus)
 
-                for param in self.new_strategies.parameters():
+                for param in strategies.parameters():
                     param.data += mu1 * epsilon[j]
             
-            for param in self.new_strategies.parameters():
+            for param in strategies.parameters():
                 param.data += alpha1 / (self.J * mu1) * sum(r * epsilon)
 
         # Oracle
         DEV = 0
-        for _ in range(self.cfgs.train.oracle_query_times):
-            action0 = self.new_strategies(torch.FloatTensor(state[0].reshape(-1, 1)).to(torch.float64).to(self.device))\
+        for _ in range(self.cfgs.train.inner_oracle_query_times):
+            action0 = strategies(torch.FloatTensor(state[0].reshape(-1, 1)).to(torch.float64).to(self.device))\
               .reshape(1).detach().cpu().numpy()
             action = self.strategies(torch.FloatTensor(state[1:]).reshape(-1, 1).to(torch.float64).to(self.device))\
               .squeeze().detach().cpu().numpy()
             action = np.concatenate((action0, action))
             state, reward, _ = self.env.step_without_packing(action)
             DEV += reward[0]
-        DEV /= self.cfgs.train.oracle_query_times
+        DEV /= self.cfgs.train.inner_oracle_query_times
 
         log(f'V: {V}, DEV: {DEV}')
         return V - DEV
@@ -122,8 +120,7 @@ class Trainer(object):
         state = self.env.reset()
 
         regret = 0
-        for _ in range(self.cfgs.train.oracle_query_times):
-            # TODO: parallel
+        for _ in range(self.cfgs.train.inner_oracle_query_times):
             action = strategies(torch.FloatTensor(state).to(torch.float64)\
               .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
             _, opt_reward = self.env.find_optim_action(action, idx=0)
@@ -131,34 +128,43 @@ class Trainer(object):
             regret += (opt_reward - reward[0]) / state[0]
             state = next_state
 
-        regret /= self.cfgs.train.oracle_query_times
+        regret /= self.cfgs.train.inner_oracle_query_times
         return -regret
 
 
-    def NESworker(self, j, mu2, epsilon, r):
+    def MinusNashAPR(self, strategies: Net):
+        """consider nash approximation
+        directly use `env.find_all_optim_action()`
+        """
+        state = self.env.reset()
+
+        nashapr = 0
+        for _ in range(self.cfgs.train.apr_test_times):
+            action = strategies(torch.FloatTensor(state).to(torch.float64)\
+              .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
+            _, opt_reward = self.env.find_all_optim_action(action)
+            next_state, reward, _ = self.env.step_without_packing(action)
+            nashapr += np.amax((opt_reward - reward) / state)
+            state = next_state
+
+        nashapr /= self.cfgs.train.apr_test_times
+        return -nashapr
+
+
+    def NESworker(self, j, mu2, epsilon, flag: bool):
         """Natural Evolution Strategies
         """
-        print(f'worker {j} start')
         strategies_copy = Net(num_agents=1, num_actions=1).to(self.device)
         strategies_copy.load_state_dict(self.strategies.state_dict())
 
         for param in strategies_copy.parameters():
-            param.data += mu2 * epsilon[j]
+            param.data += mu2 * epsilon[j] if flag else -(mu2 * epsilon[j])
 
-        print(f'calc r_{j}_plus')
-        r_j_plus = self.MinusRegret(strategies_copy)
-        print(f'r_{j}_plus: {r_j_plus}')
+        r_j_flag = self.MinusRegret(strategies_copy) # minus regret of agent 0
+        # r_j_flag = self.MinusNashAPR(strategies_copy) # minus nash approximation
 
-        for param in strategies_copy.parameters():
-            param.data -= 2 * mu2 * epsilon[j]
-
-        print(f'calc r_{j}_minus')
-        r_j_minus = self.MinusRegret(strategies_copy)
-        print(f'r_{j}_minus: {r_j_minus}')
-
-        r_j = r_j_plus - r_j_minus
-        print(f'worker {j} end, r_{j}_plus: {r_j_plus}, r_{j}_minus: {r_j_minus}, r_{j}: {r_j}, epsilon_{j}: {epsilon[j]}')
-        return j, r_j
+        print(f'worker {j}{"+" if flag else "-"} end, r[{j}]{"+" if flag else "-"}: {r_j_flag}, epsilon[{j}]: {epsilon[j]}')
+        return j, r_j_flag, flag
 
     
     def MiniMax(self, alpha1, mu1, alpha2, mu2, beta1=.9, beta2=.999, eps=1e-8):
@@ -166,22 +172,33 @@ class Trainer(object):
         use adam to optimize lr alpha2
         """
         m, v = 0, 0
-        for t in range(self.cfgs.train.iterations):
+        for t in range(self.cfgs.train.outer_iterations):
             print(f'************* iter: {t} *************')
             start_time = time.time()
             print(f'start time: {time.asctime(time.localtime(start_time))}')
 
-            print(f'regert (before update in this iter): {-self.MinusRegret(self.strategies)}')
-
             epsilon = np.random.normal(0, 1, size=self.J)
+            r_plus = np.zeros(self.J)
+            r_minus = np.zeros(self.J)
             r = np.zeros(self.J)
-            
+
             # multi process
+            iter_args = []
+            for j in range(self.J):
+                iter_args.append((j, mu2, epsilon, True))
+                iter_args.append((j, mu2, epsilon, False))
+
             with mp.Pool(processes=mp.cpu_count()) as p:
-                # TODO: -self.MinusRegret(self.strategies) parallel
-                results = p.starmap(self.NESworker, [(j, mu2, epsilon, r) for j in range(self.J)])
-                for j, r_j in results:
-                    r[j] = r_j
+                regret = p.apply_async(self.MinusRegret, (self.strategies,))
+                results = p.starmap(self.NESworker, iter_args)
+
+                print(f'!!!!!! regert (before update in iter {t}): {-regret.get()}')
+                for j, r_j_flag, flag in results:
+                    if flag:
+                        r_plus[j] = r_j_flag
+                    else:
+                        r_minus[j] = r_j_flag
+                r = r_plus - r_minus
 
             # Adam
             print(r)

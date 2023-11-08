@@ -13,6 +13,7 @@ img/
 out/
 results*/
 fee.pkl
+fee_*
 
 
 # Byte-compiled / optimized / DLL files

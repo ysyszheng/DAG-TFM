@@ -65,6 +65,8 @@ if __name__ == '__main__':
             from scripts.eval_ppo import Evaluator
         elif args.method == 'NN':
             from scripts.eval_nn import Evaluator
+        elif args.method == 'ES':
+            from scripts.eval_es import Evaluator
         evaluator = Evaluator(cfgs)
         evaluator.evaluating()
     else:

@@ -283,6 +283,24 @@ class DAGEnv(gym.Env):
         return rewards, probabilities
 
 
+    def test_random_strategy(self, test_round=100):
+        nash_apr_list = []
+        avg_regret_list = []
+        state = self.reset()
+        for _ in range(test_round):
+            action = np.random.random(state.shape) * state
+            _, optimal_reward = self.find_all_optim_action(action)
+            next_state, reward, _ = self.step_without_packing(action)
+            dev = (optimal_reward-reward)/state
+            nash_apr = np.max(dev)
+            avg_regret = np.mean(dev)
+            nash_apr_list.append(nash_apr)
+            avg_regret_list.append(avg_regret)
+            state = next_state
+            print(f'nash apr: {nash_apr}, avg regert: {avg_regret}')
+        return nash_apr_list, avg_regret_list
+
+
     def plot(self, func=None, bounds=(-5, 5), num=1000):
         x = np.linspace(bounds[0], bounds[1], num)
         if func is not None:
@@ -319,6 +337,7 @@ if __name__ == '__main__':
             is_burn=base_cfgs.is_burn
     )
     state = env.reset()
+    env.test_random_strategy()
     
     # print('step', ',', 'private value', ',', 'optimal action')
     # for i in tqdm(range(100)):

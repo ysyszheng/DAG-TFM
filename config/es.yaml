@@ -4,9 +4,13 @@ path:
   sw_path: ./results/data/es_sw.npy
 model:
 train:
-  iterations: 100
-  oracle_query_times: 50
+  outer_iterations: 100
+  inner_iterations: 20
+  inner_oracle_query_times: 100
+  apr_test_times: 5
   alpha1: .01
   mu1: .1
-  alpha2: .05
+  alpha2: .04
   mu2: .05
+eval:
+  steps: 100
