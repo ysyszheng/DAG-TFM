@@ -34,8 +34,8 @@ class Trainer(object):
 
         self.strategies = Net(num_agents=1, num_actions=1).to(self.device)
         
-        total_params = sum(p.numel() for p in self.strategies.parameters())
-        self.J = int(4 + 3 * np.floor(np.log(total_params))) # 25
+        self.d = sum(p.numel() for p in self.strategies.parameters())
+        self.J = int(4 + 3 * np.floor(np.log(self.d))) # 25
 
 
     def OriginalMinusRegret(self, strategies: Net, alpha1=.01, mu1=.1):
@@ -151,20 +151,19 @@ class Trainer(object):
         return -nashapr
 
 
-    def NESworker(self, j, mu2, epsilon, flag: bool):
+    def NESworker(self, j, mu2, epsilon):
         """Natural Evolution Strategies
         """
         strategies_copy = Net(num_agents=1, num_actions=1).to(self.device)
         strategies_copy.load_state_dict(self.strategies.state_dict())
 
-        for param in strategies_copy.parameters():
-            param.data += mu2 * epsilon[j] if flag else -(mu2 * epsilon[j])
+        for idx, param in enumerate(strategies_copy.parameters()):
+            param.data += mu2 * epsilon[idx]
 
-        r_j_flag = self.MinusRegret(strategies_copy) # minus regret of agent 0
+        r_j = self.MinusRegret(strategies_copy) # minus regret of agent 0
         # r_j_flag = self.MinusNashAPR(strategies_copy) # minus nash approximation
 
-        print(f'worker {j}{"+" if flag else "-"} end, r[{j}]{"+" if flag else "-"}: {r_j_flag}, epsilon[{j}]: {epsilon[j]}')
-        return j, r_j_flag, flag
+        return j, r_j
 
     
     def MiniMax(self, alpha1, mu1, alpha2, mu2, beta1=.9, beta2=.999, eps=1e-8):
@@ -177,44 +176,38 @@ class Trainer(object):
             start_time = time.time()
             print(f'start time: {time.asctime(time.localtime(start_time))}')
 
-            epsilon = np.random.normal(0, 1, size=self.J)
-            r_plus = np.zeros(self.J)
-            r_minus = np.zeros(self.J)
-            r = np.zeros(self.J)
+            epsilon = np.random.normal(0, 1, size=(self.J, self.d))
+            epsilon = np.concatenate((epsilon, -epsilon), axis=0)
+            u = np.zeros(2 * self.J)
+            r = np.zeros(2 * self.J)
 
             # multi process
-            iter_args = []
-            for j in range(self.J):
-                iter_args.append((j, mu2, epsilon, True))
-                iter_args.append((j, mu2, epsilon, False))
-
             with mp.Pool(processes=mp.cpu_count()) as p:
                 regret = p.apply_async(self.MinusRegret, (self.strategies,))
-                results = p.starmap(self.NESworker, iter_args)
+                results = p.starmap(self.NESworker, [(j, mu2, epsilon[j]) for j in range(self.J)])
 
-                print(f'!!!!!! regert (before update in iter {t}): {-regret.get()}')
-                for j, r_j_flag, flag in results:
-                    if flag:
-                        r_plus[j] = r_j_flag
-                    else:
-                        r_minus[j] = r_j_flag
-                r = r_plus - r_minus
+                print(f'>>> regert (before update in iter {t}): {-regret.get()}')
+                for j, r_j in results:
+                    r[j] = r_j
+            
+            # fitness shaping
+            for k in range(1, 2 * self.J + 1):
+                u[k - 1] = max(0, np.log(self.J + 1) - np.log(k))
+            u = u / np.sum(u) - 1 / (2 * self.J)
+
+            sorted_indices = sorted(range(len(r)), key=lambda i: r[i], reverse=True)
+            gradient = np.sum([u[k] * epsilon(sorted_indices[k]) for k in range(2 * self.J)], axis=0) / mu2
 
             # Adam
-            print(r)
-            print(epsilon)
-            print(self.J, mu2)
-            gradient = np.sum(r * epsilon) / (self.J * mu2)
             m = beta1 * m + (1 - beta1) * gradient
             v = beta2 * v + (1 - beta2) * gradient ** 2
             m_hat = m / (1 - beta1 ** (t + 1))
             v_hat = v / (1 - beta2 ** (t + 1))
 
             delta_param = alpha2 * m_hat / (np.sqrt(v_hat) + eps)
-            print(f'gradient: {gradient}, delta param: {delta_param}')
 
-            for param in self.strategies.parameters():
-                param.data += delta_param
+            for idx, param in enumerate(self.strategies.parameters()):
+                param.data += delta_param[idx]
 
             torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
 
