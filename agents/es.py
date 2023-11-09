@@ -19,10 +19,11 @@ class Net(nn.Module):
 
     def forward(self, s):
         assert torch.all(s > 0)
-        a = F.relu(self.fc1(s))
-        a = F.relu(self.fc2(a))
-        a = self.fc3(a)
-        a = torch.min(torch.max(a, torch.zeros_like(a)), s)
+        with torch.no_grad():
+            a = F.relu(self.fc1(s))
+            a = F.relu(self.fc2(a))
+            a = self.fc3(a)
+            a = torch.min(torch.max(a, torch.zeros_like(a)), s)
         return a
 
 

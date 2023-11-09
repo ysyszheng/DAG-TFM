@@ -286,17 +286,16 @@ class DAGEnv(gym.Env):
     def test_random_strategy(self, test_round=100):
         nash_apr_list = []
         avg_regret_list = []
-        state = self.reset()
         for _ in range(test_round):
+            state = self.reset()
             action = np.random.random(state.shape) * state
             _, optimal_reward = self.find_all_optim_action(action)
-            next_state, reward, _ = self.step_without_packing(action)
+            reward, _ = self.calculate_rewards(action)
             dev = (optimal_reward-reward)/state
             nash_apr = np.max(dev)
             avg_regret = np.mean(dev)
             nash_apr_list.append(nash_apr)
             avg_regret_list.append(avg_regret)
-            state = next_state
             print(f'nash apr: {nash_apr}, avg regert: {avg_regret}')
         return nash_apr_list, avg_regret_list
 
@@ -337,64 +336,3 @@ if __name__ == '__main__':
             is_burn=base_cfgs.is_burn
     )
     state = env.reset()
-    env.test_random_strategy()
-    
-    # print('step', ',', 'private value', ',', 'optimal action')
-    # for i in tqdm(range(100)):
-    #     action, reward = env.find_nash_equilibrium()
-        
-    #     for s, a, r in zip(state, action, reward):
-    #         print(i, ',', s,',',a ,',',r)
-
-
-    # # just for test
-    # action = state
-
-    # start_time = time.time()
-    # env.find_optim_action(action)
-    # end_time = time.time()
-    # execution_time = end_time - start_time
-    # print(f'exec time: {execution_time} second') # 68s
-
-    # start_time = time.time()
-    # env.step(action)
-    # end_time = time.time()
-    # execution_time = end_time - start_time
-    # print(f'exec time: {execution_time} second') # 1.6s
-    
-    # _, _, _ , info = env.step(state)
-    # for fee, prob in zip(state, info['probabilities']):
-    #     print(fee, ',', prob)
-
-
-    # cProfile.run('env.step(state)', sort='cumtime')
-
-    # env.plot(env.f, (0, 1))
-    # env.plot(env.invf, (env.f(1), 1))
-    # env.plot(env.invf_with_clip, (0, 1))
-
-    # # plot
-    # for lambd in range(1,10):
-    #     env = DAGEnv(
-    #             fee_data_path=base_cfgs.fee_data_path,
-    #             is_clip=base_cfgs.is_clip,
-    #             clip_value=base_cfgs.clip_value,
-    #             max_agents_num=base_cfgs.max_agents_num,
-    #             lambd=lambd,
-    #             delta=base_cfgs.delta,
-    #             b=base_cfgs.b,
-    #             a=base_cfgs.a,
-    #             is_burn=base_cfgs.is_burn
-    #     )
-    #     state = env.reset()
-
-        
-    #     throughput_list = []
-    #     sw_list = []
-    #     progress_bar = tqdm(range(3))
-    #     for _ in progress_bar:
-    #         state, _, _ , info = env.step(state)
-    #         throughput_list.append(info["throughput"])
-    #         sw_list.append(info['total_private_value'])
-    #         progress_bar.set_description(f'throughout: {info["throughput"]}, optimal: {info["optimal"]}')
-    #     print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')

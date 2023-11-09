@@ -33,6 +33,7 @@ class Trainer(object):
         )
 
         self.strategies = Net(num_agents=1, num_actions=1).to(self.device)
+        # self.strategies.load_state_dict(torch.load(cfgs.path.model_path)) # TODO: delete
         
         self.d = sum(p.numel() for p in self.strategies.parameters())
         self.J = int(4 + 3 * np.floor(np.log(self.d))) # 25
@@ -157,11 +158,13 @@ class Trainer(object):
         strategies_copy = Net(num_agents=1, num_actions=1).to(self.device)
         strategies_copy.load_state_dict(self.strategies.state_dict())
 
-        for idx, param in enumerate(strategies_copy.parameters()):
-            param.data += mu2 * epsilon[idx]
+        with torch.no_grad():
+            for param, delta in zip(strategies_copy.parameters(), mu2 * epsilon):
+                param.data.add_(delta)
 
         r_j = self.MinusRegret(strategies_copy) # minus regret of agent 0
         # r_j_flag = self.MinusNashAPR(strategies_copy) # minus nash approximation
+        print(f'worker {j} end, r[{j}]: {r_j}')
 
         return j, r_j
 
@@ -184,7 +187,7 @@ class Trainer(object):
             # multi process
             with mp.Pool(processes=mp.cpu_count()) as p:
                 regret = p.apply_async(self.MinusRegret, (self.strategies,))
-                results = p.starmap(self.NESworker, [(j, mu2, epsilon[j]) for j in range(self.J)])
+                results = p.starmap(self.NESworker, [(j, mu2, epsilon[j]) for j in range(2 * self.J)])
 
                 print(f'>>> regert (before update in iter {t}): {-regret.get()}')
                 for j, r_j in results:
@@ -196,7 +199,7 @@ class Trainer(object):
             u = u / np.sum(u) - 1 / (2 * self.J)
 
             sorted_indices = sorted(range(len(r)), key=lambda i: r[i], reverse=True)
-            gradient = np.sum([u[k] * epsilon(sorted_indices[k]) for k in range(2 * self.J)], axis=0) / mu2
+            gradient = np.sum([u[k] * epsilon[sorted_indices[k]] for k in range(2 * self.J)], axis=0) / mu2
 
             # Adam
             m = beta1 * m + (1 - beta1) * gradient
@@ -206,8 +209,10 @@ class Trainer(object):
 
             delta_param = alpha2 * m_hat / (np.sqrt(v_hat) + eps)
 
-            for idx, param in enumerate(self.strategies.parameters()):
-                param.data += delta_param[idx]
+            # update network parameters
+            with torch.no_grad():
+                for param, delta in zip(self.strategies.parameters(), delta_param):
+                    param.data.add_(delta)
 
             torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
 

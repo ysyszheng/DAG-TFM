@@ -13,4 +13,4 @@ train:
   alpha2: .04
   mu2: .05
 eval:
-  steps: 100
+  test_round: 100
