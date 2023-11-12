@@ -61,12 +61,12 @@ def plot_tx_fee_vs_private_value(csv_file_path, step):
     plt.show()
 
 
-def plot_strategies(max_value=1000000):
+def plot_strategies(max_value=100000):
     import torch
     from agents.es import Net
     device = torch.device('cpu')
     strategies = Net(num_agents=1, num_actions=1).to(device)
-    strategies.load_state_dict(torch.load(r'./models/es_1.pth'))
+    strategies.load_state_dict(torch.load(r'./models/es_0.pth'))
     x = np.linspace(1,max_value, 10000)
     y = strategies(torch.FloatTensor(x).to(torch.float64)\
         .reshape(-1, 1).to(device)).squeeze().detach().cpu().numpy()
