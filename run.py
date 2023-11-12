@@ -56,6 +56,8 @@ if __name__ == '__main__':
             from scripts.test_ppo import Tester
         elif args.method == 'NN':
             from scripts.test_nn import Tester
+        elif args.method == 'ES':
+            from scripts.test_es import Tester
         tester = Tester(cfgs)
         tester.testing()
     elif args.mode == 'eval':

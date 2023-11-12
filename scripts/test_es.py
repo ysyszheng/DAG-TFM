@@ -13,41 +13,33 @@ class Tester(object):
         super(Tester, self).__init__()
         self.cfgs = cfgs
         fix_seed(cfgs.seed+666) # * use different seed from training
+        self.device = torch.device('cpu')
 
-        self.env = gym.make('gym_dag_env-v0', 
-            fee_data_path=cfgs.fee_data_path, max_agents_num=cfgs.max_agents_num,
-            lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
-        )
         self.strategies = Net(num_agents=1, num_actions=1).to(self.device)
         self.strategies.load_state_dict(torch.load(cfgs.path.model_path))
 
     def testing(self):
-        state = self.env.reset()
-        throughput_list = []
-        rate_list = []
-        total_private_value_list = []
-
-        progress_bar = tqdm(range(1, self.cfgs.test.steps+1))
-        for _ in progress_bar:
-            action = np.zeros_like(state)
-
-            for i in range(len(state)):
-                action[i] = self.strategies(state[i])
-
-            state = unormize(state, self.env.state_mean, self.env.state_std)
-            action = action * state
-
-            next_state, _, _, info = self.env.step(action)
-
-            state = normize(next_state, self.env.state_mean, self.env.state_std)
-
-            throughput_list.append(info['throughput'])
-            rate_list.append(info['rate'])
-            total_private_value_list.append(info['total_private_value'])
-
-            progress_bar.set_description(f'Throughput: {info["throughput"]:.2f} | Rate: {info["rate"]:.2f}')
-
-        log(f'All throughput: {throughput_list}')
-        log(f'Mean throughput: {np.mean(throughput_list):.2f}')
-        log(f'All rate: {rate_list}')
-        log(f'Mean rate: {np.mean(rate_list):.2f}')
+        for lambd in range(1,self.cfgs.test.max_lambd+1):
+            env = DAGEnv(
+                    fee_data_path=self.cfgs.fee_data_path,
+                    is_clip=self.cfgs.is_clip,
+                    clip_value=self.cfgs.clip_value,
+                    max_agents_num=self.cfgs.max_agents_num,
+                    lambd=lambd,
+                    delta=self.cfgs.delta,
+                    b=self.cfgs.b,
+                    a=self.cfgs.a,
+                    is_burn=self.cfgs.is_burn
+            )
+            state = env.reset()
+            
+            throughput_list = []
+            sw_list = []
+            
+            for _ in range(self.cfgs.test.test_round):
+                action = self.strategies(torch.FloatTensor(state).to(torch.float64)\
+                    .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
+                state, _, _ , info = env.step(action)
+                throughput_list.append(info["throughput"])
+                sw_list.append(info['total_private_value'])
+            print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')

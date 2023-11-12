@@ -3,6 +3,9 @@ import numpy as np
 import argparse
 import os
 import pandas as pd
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def plot(file_path, label):
@@ -58,22 +61,41 @@ def plot_tx_fee_vs_private_value(csv_file_path, step):
     plt.show()
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--file_path', type=str, default=None, help='File Path')
-    parser.add_argument('--graph', type=str, default=None, help='Graph')
-    parser.add_argument('--window_size', type=int, default=100, help='Window Size')
-    parser.add_argument('--step', type=int, default=None, help='Step')
-    parser.add_argument('--label', type=str, default=None, help='Label')
-    args = parser.parse_args()
+def plot_strategies(max_value=1000000):
+    import torch
+    from agents.es import Net
+    device = torch.device('cpu')
+    strategies = Net(num_agents=1, num_actions=1).to(device)
+    strategies.load_state_dict(torch.load(r'./models/es_1.pth'))
+    x = np.linspace(1,max_value, 10000)
+    y = strategies(torch.FloatTensor(x).to(torch.float64)\
+        .reshape(-1, 1).to(device)).squeeze().detach().cpu().numpy()
+    plt.figure()
+    plt.scatter(x, y, s=10, alpha=0.8)
+    plt.title('NES strategies')
+    plt.xlabel('Private Value')
+    plt.ylabel('Transaction Fee')
+    plt.savefig(f'./results/img/NES.png')
+    plt.show()
 
-    if args.graph == 'sw':
-        plot_sw(args.file_path, args.window_size)
-    elif args.graph == 'incentive_awareness':
-        plot_incentive_awarness(args.file_path)
-    elif args.graph == 'tx_fee_vs_private_value':
-        plot_tx_fee_vs_private_value(args.file_path, args.step)
-    elif args.graph == 'plot':
-        plot(args.file_path, args.label)
-    else:
-        raise NotImplementedError
+
+if __name__ == '__main__':
+    plot_strategies()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('--file_path', type=str, default=None, help='File Path')
+    # parser.add_argument('--graph', type=str, default=None, help='Graph')
+    # parser.add_argument('--window_size', type=int, default=100, help='Window Size')
+    # parser.add_argument('--step', type=int, default=None, help='Step')
+    # parser.add_argument('--label', type=str, default=None, help='Label')
+    # args = parser.parse_args()
+
+    # if args.graph == 'sw':
+    #     plot_sw(args.file_path, args.window_size)
+    # elif args.graph == 'incentive_awareness':
+    #     plot_incentive_awarness(args.file_path)
+    # elif args.graph == 'tx_fee_vs_private_value':
+    #     plot_tx_fee_vs_private_value(args.file_path, args.step)
+    # elif args.graph == 'plot':
+    #     plot(args.file_path, args.label)
+    # else:
+    #     raise NotImplementedError

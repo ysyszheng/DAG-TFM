@@ -24,8 +24,6 @@ class Evaluator(object):
         self.strategies.load_state_dict(torch.load(cfgs.path.model_path))
 
     def evaluating(self):
-        nash_apr_list_random = []
-        nash_apr_list_es = []
         avg_regret_list_random = []
         avg_regret_list_es = []
 
@@ -34,6 +32,7 @@ class Evaluator(object):
             action_random = np.random.random(state.shape) * state
             action_es = self.strategies(torch.FloatTensor(state).to(torch.float64)\
               .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
+
             _, opt_reward_random = self.env.find_all_optim_action(action_random)
             reward_random, _ = self.env.calculate_rewards(action_random)
             _, opt_reward_es = self.env.find_all_optim_action(action_es)
@@ -44,9 +43,8 @@ class Evaluator(object):
             nash_apr_es = np.max(dev_es)
             avg_regret_random = np.mean(dev_random)
             avg_regret_es = np.mean(dev_es)
-            nash_apr_list_random.append(nash_apr_random)
-            nash_apr_list_es.append(nash_apr_es)
             avg_regret_list_random.append(avg_regret_random)
             avg_regret_list_es.append(avg_regret_es)
-            print(f'Random startegies:\tnash apr: {nash_apr_random},\tavg regert: {avg_regret_random}')
-            print(f'NES startegies:\tnash apr: {nash_apr_es},\tavg regert: {avg_regret_es}')
+            print(f'Random startegies:  nash apr: {nash_apr_random},\tavg regert: {avg_regret_random}')
+            print(f'NES startegies:     nash apr: {nash_apr_es},\tavg regert: {avg_regret_es}')
+

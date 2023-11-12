@@ -108,9 +108,14 @@ class DAGEnv(gym.Env):
     def reset(self):
         # fix the number of txs in delta time (fix number of agents)
         self.num_agents = self.max_agents_num
+
+        # txs fee, sample from real data or uniform [0,1]
         self.state = np.array([self.fee_list[i] for i in np.random.randint(len(self.fee_list), size=self.num_agents)])
+        # self.state = np.random.random(self.num_agents)
+        
         # miner numbers in delta time, Poisson distribution or fixed number
-        self.num_miners = 1 + np.random.poisson(self.lambd * self.delta)
+        self.num_miners = np.random.poisson(self.lambd * self.delta)
+        # self.num_miners = 1 + np.random.poisson(self.lambd * self.delta)
         # self.num_miners = self.lambd * self.delta
 
         return self.state
@@ -132,10 +137,12 @@ class DAGEnv(gym.Env):
         # calculate throughput and social welfare (total private value)
         included_txs = []
         # use marginal probabilities
-        for _ in range(self.num_agents):
-            random_numbers = np.random.rand(self.num_agents)
-            mask = random_numbers < probabilities
-            selected_indices = np.where(mask)[0].tolist()
+        for _ in range(self.num_miners):
+            selected_indices = []
+            while len(selected_indices) != self.b:
+                random_numbers = np.random.rand(self.num_agents)
+                mask = random_numbers < probabilities
+                selected_indices = np.where(mask)[0].tolist()
             included_txs.extend(selected_indices)
 
         unique_txs = set(included_txs)
@@ -324,15 +331,39 @@ if __name__ == '__main__':
     
     fix_seed(base_cfgs.seed)
     
-    env = DAGEnv(
-            fee_data_path=base_cfgs.fee_data_path,
-            is_clip=base_cfgs.is_clip,
-            clip_value=base_cfgs.clip_value,
-            max_agents_num=base_cfgs.max_agents_num,
-            lambd=base_cfgs.lambd,
-            delta=base_cfgs.delta,
-            b=base_cfgs.b,
-            a=base_cfgs.a,
-            is_burn=base_cfgs.is_burn
-    )
-    state = env.reset()
+    # env = DAGEnv(
+    #         fee_data_path=base_cfgs.fee_data_path,
+    #         is_clip=base_cfgs.is_clip,
+    #         clip_value=base_cfgs.clip_value,
+    #         max_agents_num=base_cfgs.max_agents_num,
+    #         lambd=base_cfgs.lambd,
+    #         delta=base_cfgs.delta,
+    #         b=base_cfgs.b,
+    #         a=base_cfgs.a,
+    #         is_burn=base_cfgs.is_burn
+    # )
+    # state = env.reset()
+
+    is_burn = False
+    for lambd in range(1,11):
+        env = DAGEnv(
+                fee_data_path=base_cfgs.fee_data_path,
+                is_clip=base_cfgs.is_clip,
+                clip_value=base_cfgs.clip_value,
+                max_agents_num=base_cfgs.max_agents_num,
+                lambd=lambd,
+                delta=base_cfgs.delta,
+                b=base_cfgs.b,
+                a=base_cfgs.a,
+                is_burn=is_burn
+        )
+        state = env.reset()
+        
+        throughput_list = []
+        sw_list = []
+        
+        for _ in range(10):
+            state, _, _ , info = env.step(state)
+            throughput_list.append(info["throughput"])
+            sw_list.append(info['total_private_value'])
+        print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')
