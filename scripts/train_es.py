@@ -225,6 +225,7 @@ class Trainer(object):
 
             # before update
             with mp.Pool(processes=self.cfgs.train.inner_oracle_query_times) as p:
+            # with mp.Pool(processes=mp.cpu_count()) as p:
                 results = p.starmap(self.EPSworker, [(self.strategies,)
                                 for _ in range(self.cfgs.train.inner_oracle_query_times)])
                 print(f'>>> update time {t}: epsilon = {np.amax(results)}')
