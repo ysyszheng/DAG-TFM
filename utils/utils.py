@@ -36,6 +36,13 @@ def log(*args):
         print(colored_msg, *args)
 
 
+def warpper(data):
+    if isinstance(data, np.ndarray):
+        return torch.from_numpy(data)
+    else:
+        return data
+
+
 def normize(x, mean, std):
     return (x - mean) / std
 

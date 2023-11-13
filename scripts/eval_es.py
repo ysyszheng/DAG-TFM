@@ -21,7 +21,8 @@ class Evaluator(object):
             lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
         )
         self.strategies = Net(num_agents=1, num_actions=1).to(self.device)
-        self.strategies.load_state_dict(torch.load(cfgs.path.model_path))
+        # self.strategies.load_state_dict(torch.load(cfgs.path.model_path)) # TODO: modify
+        self.strategies.load_state_dict(torch.load(r'./models/es_0.pth'))
 
     def evaluating(self):
         avg_regret_list_random = []
@@ -32,11 +33,12 @@ class Evaluator(object):
             action_random = np.random.random(state.shape) * state
             action_es = self.strategies(torch.FloatTensor(state).to(torch.float64)\
               .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
-
+            print(state, action_es)
             _, opt_reward_random = self.env.find_all_optim_action(action_random)
             reward_random, _ = self.env.calculate_rewards(action_random)
             _, opt_reward_es = self.env.find_all_optim_action(action_es)
             reward_es, _ = self.env.calculate_rewards(action_es)
+            print(opt_reward_es, reward_es)
             dev_random = (opt_reward_random - reward_random) / state
             dev_es = (opt_reward_es - reward_es) / state
             nash_apr_random = np.max(dev_random)
