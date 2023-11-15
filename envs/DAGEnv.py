@@ -197,12 +197,11 @@ class DAGEnv(gym.Env):
     def find_nash_equilibrium(self, epsilon=1e-4): # assume has common knowledge
         action = np.random.random(self.state.shape) * self.state
         reward = self.calculate_rewards(action)[0]
-        flag = False
-        while not flag:
+        while True:
             optim_action, optim_reward = self.find_all_optim_action(action)
-            loss = np.max((optim_reward-reward)/(reward+1e-6))
+            loss = np.max((optim_reward - reward) / self.state)
             if loss <= epsilon:
-                flag = True
+                break
             action = optim_action
             reward = optim_reward
             # log(action, loss)
@@ -331,39 +330,46 @@ if __name__ == '__main__':
     
     fix_seed(base_cfgs.seed)
     
-    # env = DAGEnv(
-    #         fee_data_path=base_cfgs.fee_data_path,
-    #         is_clip=base_cfgs.is_clip,
-    #         clip_value=base_cfgs.clip_value,
-    #         max_agents_num=base_cfgs.max_agents_num,
-    #         lambd=base_cfgs.lambd,
-    #         delta=base_cfgs.delta,
-    #         b=base_cfgs.b,
-    #         a=base_cfgs.a,
-    #         is_burn=base_cfgs.is_burn
-    # )
-    # state = env.reset()
+    env = DAGEnv(
+            fee_data_path=base_cfgs.fee_data_path,
+            is_clip=base_cfgs.is_clip,
+            clip_value=base_cfgs.clip_value,
+            max_agents_num=base_cfgs.max_agents_num,
+            lambd=base_cfgs.lambd,
+            delta=base_cfgs.delta,
+            b=base_cfgs.b,
+            a=base_cfgs.a,
+            is_burn=base_cfgs.is_burn
+    )
+    state = env.reset()
 
-    is_burn = False
-    for lambd in range(1,11):
-        env = DAGEnv(
-                fee_data_path=base_cfgs.fee_data_path,
-                is_clip=base_cfgs.is_clip,
-                clip_value=base_cfgs.clip_value,
-                max_agents_num=base_cfgs.max_agents_num,
-                lambd=lambd,
-                delta=base_cfgs.delta,
-                b=base_cfgs.b,
-                a=base_cfgs.a,
-                is_burn=is_burn
-        )
+    print(f'idx,state,action,reward')
+    for i in range(10):
         state = env.reset()
+        action, reward = env.find_nash_equilibrium()
+        for s, a, r in zip(state, action, reward):
+            print(i, ',', s, ',', a, ',', r)
+
+    # is_burn = False
+    # for lambd in range(1,11):
+    #     env = DAGEnv(
+    #             fee_data_path=base_cfgs.fee_data_path,
+    #             is_clip=base_cfgs.is_clip,
+    #             clip_value=base_cfgs.clip_value,
+    #             max_agents_num=base_cfgs.max_agents_num,
+    #             lambd=lambd,
+    #             delta=base_cfgs.delta,
+    #             b=base_cfgs.b,
+    #             a=base_cfgs.a,
+    #             is_burn=is_burn
+    #     )
+    #     state = env.reset()
         
-        throughput_list = []
-        sw_list = []
+    #     throughput_list = []
+    #     sw_list = []
         
-        for _ in range(10):
-            state, _, _ , info = env.step(state)
-            throughput_list.append(info["throughput"])
-            sw_list.append(info['total_private_value'])
-        print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')
+    #     for _ in range(10):
+    #         state, _, _ , info = env.step(state)
+    #         throughput_list.append(info["throughput"])
+    #         sw_list.append(info['total_private_value'])
+    #     print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')

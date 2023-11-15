@@ -1,15 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.utils import warpper
+import numpy as np
+from typing import Tuple
 
 
 class Net(nn.Module):
-    def __init__(self, num_agents, num_actions):
+    def __init__(self, num_agents, num_actions, nu=0.05):
         super(Net, self).__init__()
         self.num_agents = num_agents
         self.num_actions = num_actions
@@ -23,8 +20,9 @@ class Net(nn.Module):
             "m_hat": torch.tensor(0),
             "v_hat": torch.tensor(0),
         }
+        self.d = sum(p.numel() for p in self.parameters())
 
-        self.xavier_init()
+        # self.xavier_init()
         for param in self.parameters():
             param.data = param.data.to(torch.float64)
 
@@ -35,13 +33,14 @@ class Net(nn.Module):
             a = F.relu(self.fc1(s))
             a = F.relu(self.fc2(a))
             a = self.fc3(a)
-            a = torch.min(torch.max(a, torch.zeros_like(a)), s)
+            # a = torch.min(torch.max(a, torch.zeros_like(a)), s)
         return a
 
     
     def update(self, grad, alpha, beta, eps=1e-8):
         beta1, beta2 = beta
-        grad = warpper(grad)
+        if isinstance(grad, np.ndarray):
+            return torch.from_numpy(grad)
 
         self.adam_param['t'] += 1
         self.adam_param['m'] = beta1 * self.adam_param['m'] + (1 - beta1) * grad
@@ -82,13 +81,14 @@ class Net(nn.Module):
 
 
 if __name__ == '__main__':
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from utils.utils import fix_seed
 
     fix_seed(3407)
     net = Net(num_agents=1, num_actions=1)
-
-    for param in net.named_parameters():
-        print(param[0], param[1])
-
-    print("*********")
+    print(sum(p.numel() for p in net.parameters()))
+    for p in net.named_parameters():
+        print(p)
     print(net.state_dict())

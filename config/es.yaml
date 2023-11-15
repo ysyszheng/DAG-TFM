@@ -6,13 +6,13 @@ model:
 train:
   outer_iterations: 100
   inner_iterations: 20
-  inner_oracle_query_times: 100
-  expect_time: 10
+  inner_oracle_query_times: 80
+  expect_time: 3
   apr_test_times: 5
   alpha1: .01
-  mu1: .1
+  nu1: .1
   alpha2: .04
-  mu2: .05
+  nu2: .05
 eval:
   test_round: 100
 test:

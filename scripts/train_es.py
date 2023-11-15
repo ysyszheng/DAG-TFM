@@ -27,20 +27,19 @@ class Trainer(object):
         # self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.device = torch.device('cpu')
 
-        self.env = gym.make('gym_dag_env-v0', 
+        self.strategies = Net(num_agents=1, num_actions=1, nu=self.cfgs.train.nu2).to(self.device)
+        self.strategies.load_state_dict(torch.load(r'./models/es_0.pth')) # TODO: delete
+        self.d = self.strategies.d
+        self.J = int(4 + 3 * np.floor(np.log(self.d))) // 2 # 25 / 2
+
+        self.env: DAGEnv = gym.make('gym_dag_env-v0', 
             fee_data_path=cfgs.fee_data_path, is_clip=cfgs.is_clip, 
             clip_value=cfgs.clip_value, max_agents_num=cfgs.max_agents_num,
             lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
         )
 
-        self.strategies = Net(num_agents=1, num_actions=1).to(self.device)
-        # self.strategies.load_state_dict(torch.load(cfgs.path.model_path)) # TODO: delete
-        
-        self.d = sum(p.numel() for p in self.strategies.parameters())
-        self.J = int(4 + 3 * np.floor(np.log(self.d))) // 2 # 25
 
-
-    def OriginalMinusRegret(self, strategies: Net, alpha1=.01, mu1=.1):
+    def OriginalMinusRegret(self, strategies: Net, alpha1=.01, nu1=.1):
         '''consider regret of agent 0
         original algorithm
         '''
@@ -62,7 +61,7 @@ class Trainer(object):
 
             for j in range(self.J):
                 for param in strategies.parameters():
-                    param.data += mu1 * epsilon[j]
+                    param.data += nu1 * epsilon[j]
                 
                 # Oracle
                 r_j_plus = 0
@@ -77,7 +76,7 @@ class Trainer(object):
                 r_j_plus /= self.cfgs.train.inner_oracle_query_times
 
                 for param in strategies.parameters():
-                    param.data -= 2 * mu1 * epsilon[j]
+                    param.data -= 2 * nu1 * epsilon[j]
 
                 # Oracle
                 r_j_minus = 0
@@ -94,10 +93,10 @@ class Trainer(object):
                 r[j] = (r_j_plus - r_j_minus)
 
                 for param in strategies.parameters():
-                    param.data += mu1 * epsilon[j]
+                    param.data += nu1 * epsilon[j]
             
             for param in strategies.parameters():
-                param.data += alpha1 / (self.J * mu1) * sum(r * epsilon)
+                param.data += alpha1 / (self.J * nu1) * sum(r * epsilon)
 
         # Oracle
         DEV = 0
@@ -193,14 +192,14 @@ class Trainer(object):
         return epsilon
 
 
-    def NESworker(self, j, mu2, epsilon):
+    def NESworker(self, j, nu2, epsilon):
         """Natural Evolution Strategies
         """
         strategies_copy = Net(num_agents=1, num_actions=1).to(self.device)
         strategies_copy.load_state_dict(self.strategies.state_dict())
 
         with torch.no_grad():
-            for param, delta in zip(strategies_copy.parameters(), mu2 * epsilon):
+            for param, delta in zip(strategies_copy.parameters(), nu2 * epsilon):
                 param.data.add_(delta)
 
         r_j = self.MinusRegret(strategies_copy) # minus regret of agent 0
@@ -208,7 +207,7 @@ class Trainer(object):
         return j, r_j
 
     
-    def MiniMax(self, alpha1, mu1, alpha2, mu2, beta1=.9, beta2=.999, eps=1e-8):
+    def MiniMax(self, alpha1, nu1, alpha2, nu2, beta1=.9, beta2=.999, eps=1e-8):
         """min regret
         use adam to optimize lr alpha2
         """
@@ -218,29 +217,31 @@ class Trainer(object):
             start_time = time.time()
             print(f'start time: {time.asctime(time.localtime(start_time))}')
 
-            epsilon = np.random.normal(0, 1, size=(self.J, self.d))
-            epsilon = np.concatenate((epsilon, -epsilon), axis=0)
-            u = np.zeros(2 * self.J)
-            r = np.zeros(2 * self.J)
-
             # before update
             with mp.Pool(processes=self.cfgs.train.inner_oracle_query_times) as p:
             # with mp.Pool(processes=mp.cpu_count()) as p:
                 results = p.starmap(self.EPSworker, [(self.strategies,)
                                 for _ in range(self.cfgs.train.inner_oracle_query_times)])
-                print(f'>>> update time {t}: epsilon = {np.amax(results)}')
+                print(f'update time {t}>>> epsilon: {np.amax(results)}')
+
+            epsilon = np.random.normal(0, 1, size=(self.J, self.d))
+            epsilon = np.concatenate((epsilon, -epsilon), axis=0)
+            u = np.zeros(2 * self.J)
+            r = np.zeros(2 * self.J)
 
             # max epsilon-BNE
             for j in range(2 * self.J):
                 strategies_new.load_state_dict(self.strategies.state_dict())
                 with torch.no_grad():
-                    for param, delta in zip(strategies_new.parameters(), mu2 * epsilon[j]):
+                    for param, delta in zip(strategies_new.parameters(), nu2 * epsilon[j]):
                         param.data.add_(delta)
 
                 with mp.Pool(processes=self.cfgs.train.inner_oracle_query_times) as p:
                     results = p.starmap(self.EPSworker, [(strategies_new,)
                                     for _ in range(self.cfgs.train.inner_oracle_query_times)])
                     r[j] = -np.amax(results)
+                    # r[j] = -np.mean(results)
+                    print(f'try {j}>>> epsilon: {np.amax(results)}, regret: {np.mean(results)}')
             
             # fitness shaping
             for k in range(1, 2 * self.J + 1):
@@ -248,7 +249,10 @@ class Trainer(object):
             u = u / np.sum(u) - 1 / (2 * self.J)
 
             sorted_indices = sorted(range(len(r)), key=lambda i: r[i], reverse=True)
-            gradient = np.sum([u[k] * epsilon[sorted_indices[k]] for k in range(2 * self.J)], axis=0) / mu2
+            gradient = np.sum([u[k] * epsilon[sorted_indices[k]] for k in range(2 * self.J)], axis=0) / nu2
+
+            # non fitness shaping
+            # gradient = np.sum([r[k] * epsilon[k] for k in range(2 * self.J)], axis=0) / (nu2 * self.J)
 
             # Adam optimize
             self.strategies.update(gradient, alpha2, (beta1, beta2), eps)
@@ -262,9 +266,8 @@ class Trainer(object):
 
 
     def training(self):
-        fix_seed(self.cfgs.seed)
         mp.set_start_method('spawn')
-        self.MiniMax(self.cfgs.train.alpha1, self.cfgs.train.mu1, self.cfgs.train.alpha2, self.cfgs.train.mu2)
+        self.MiniMax(self.cfgs.train.alpha1, self.cfgs.train.nu1, self.cfgs.train.alpha2, self.cfgs.train.nu2)
         torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
 
 
