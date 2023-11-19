@@ -1,0 +1,10 @@
+path:
+  model_path: ./results/models/cmaes.pth
+  log_path: ./results/data/cmaes_log.csv
+  sw_path: ./results/data/cmaes_sw.npy
+model:
+train:
+  query_time: 100
+  hidden_layer_size: (32,32)
+eval:
+  test_round: 1000

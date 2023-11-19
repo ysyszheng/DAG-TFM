@@ -61,12 +61,14 @@ def plot_tx_fee_vs_private_value(csv_file_path, step):
     plt.show()
 
 
-def plot_strategies(max_value=100000):
+def plot_strategies(max_value=10000):
     import torch
     from agents.es import Net
+    from utils import fix_seed
+    fix_seed(3407)
     device = torch.device('cpu')
     strategies = Net(num_agents=1, num_actions=1).to(device)
-    strategies.load_state_dict(torch.load(r'./results/models/es.pth'))
+    strategies.load_state_dict(torch.load(r'./results/models/cmaes.pth'))
     x = np.linspace(1,max_value, 10000)
     y = strategies(torch.FloatTensor(x).to(torch.float64)\
         .reshape(-1, 1).to(device)).squeeze().detach().cpu().numpy()
@@ -75,7 +77,7 @@ def plot_strategies(max_value=100000):
     plt.title('NES strategies')
     plt.xlabel('Private Value')
     plt.ylabel('Transaction Fee')
-    plt.savefig(f'./results/img/NES.png')
+    plt.savefig(f'./results/img/CMAES.png')
     plt.show()
 
 

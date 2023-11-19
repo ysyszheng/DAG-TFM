@@ -16,6 +16,7 @@ import logging
 import time
 import torch.multiprocessing as mp
 from copy import deepcopy
+import matplotlib.pyplot as plt
 
 
 class Trainer(object):
@@ -190,6 +191,16 @@ class Trainer(object):
 
         epsilon /= self.cfgs.train.expect_time
         return epsilon
+    
+
+    def TESTworker(self, strategies: Net):
+        x = np.random.random(1000) * 10000
+        y_hat = strategies(torch.FloatTensor(x).to(torch.float64)\
+                .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
+        y = np.sqrt(x)
+        loss = np.max(np.abs(y - y_hat))
+
+        return -loss, x, y_hat, y
 
 
     def NESworker(self, j, nu2, epsilon):
@@ -207,22 +218,36 @@ class Trainer(object):
         return j, r_j
 
     
-    def MiniMax(self, alpha1, nu1, alpha2, nu2, beta1=.9, beta2=.999, eps=1e-8):
+    def MiniMax(self, alpha2, beta1=.9, beta2=.999, eps=1e-8):
         """min regret
         use adam to optimize lr alpha2
         """
+        torch.set_grad_enabled(False)
         strategies_new = Net(num_agents=1, num_actions=1).to(self.device)
         for t in range(self.cfgs.train.outer_iterations):
-            print(f'************* iter: {t} *************')
-            start_time = time.time()
-            print(f'start time: {time.asctime(time.localtime(start_time))}')
+            # print(f'************* iter: {t} *************')
+            # start_time = time.time()
+            # print(f'start time: {time.asctime(time.localtime(start_time))}')
 
-            # before update
-            with mp.Pool(processes=self.cfgs.train.inner_oracle_query_times) as p:
-            # with mp.Pool(processes=mp.cpu_count()) as p:
-                results = p.starmap(self.EPSworker, [(self.strategies,)
-                                for _ in range(self.cfgs.train.inner_oracle_query_times)])
-                print(f'update time {t}>>> epsilon: {np.amax(results)}')
+            # # before update
+            # with mp.Pool(processes=self.cfgs.train.inner_oracle_query_times) as p:
+            # # with mp.Pool(processes=mp.cpu_count()) as p:
+            #     results = p.starmap(self.EPSworker, [(self.strategies,)
+            #                     for _ in range(self.cfgs.train.inner_oracle_query_times)])
+            #     print(f'update time {t}>>> epsilon: {np.amax(results)}')
+            loss, x, y_hat, y = self.TESTworker(self.strategies)
+            if t % 50 == 0:
+                plt.figure(figsize=(8, 6))
+                plt.scatter(x, y_hat, label='Predicted y_hat', alpha=0.5, color='red')
+                plt.scatter(x, y, label='True y', alpha=0.5, color='blue')
+                plt.xlabel('x')
+                plt.ylabel('y')
+                plt.title('Comparison between Predicted y_hat and True y')
+                plt.legend()
+                plt.grid(True)
+                plt.savefig(f'./img/{t}.png')
+                plt.show()
+                print(f'update time {t}>>> loss: {-loss}')
 
             epsilon = np.random.normal(0, 1, size=(self.J, self.d))
             epsilon = np.concatenate((epsilon, -epsilon), axis=0)
@@ -233,15 +258,17 @@ class Trainer(object):
             for j in range(2 * self.J):
                 strategies_new.load_state_dict(self.strategies.state_dict())
                 with torch.no_grad():
-                    for param, delta in zip(strategies_new.parameters(), nu2 * epsilon[j]):
+                    for param, delta in zip(strategies_new.parameters(), self.strategies.nu * epsilon[j]):
                         param.data.add_(delta)
 
-                with mp.Pool(processes=self.cfgs.train.inner_oracle_query_times) as p:
-                    results = p.starmap(self.EPSworker, [(strategies_new,)
-                                    for _ in range(self.cfgs.train.inner_oracle_query_times)])
-                    r[j] = -np.amax(results)
-                    # r[j] = -np.mean(results)
-                    print(f'try {j}>>> epsilon: {np.amax(results)}, regret: {np.mean(results)}')
+                # with mp.Pool(processes=self.cfgs.train.inner_oracle_query_times) as p:
+                #     results = p.starmap(self.EPSworker, [(strategies_new,)
+                #                     for _ in range(self.cfgs.train.inner_oracle_query_times)]
+                #     r[j] = -np.amax(results)
+                #     # r[j] = -np.mean(results)
+                #     print(f'try {j}>>> epsilon: {np.amax(results)}, regret: {np.mean(results)}')
+                r[j], _, _, _ = self.TESTworker(strategies_new)
+                # print(f'try {j}>>> loss: {-r[j]}')
             
             # fitness shaping
             for k in range(1, 2 * self.J + 1):
@@ -249,25 +276,39 @@ class Trainer(object):
             u = u / np.sum(u) - 1 / (2 * self.J)
 
             sorted_indices = sorted(range(len(r)), key=lambda i: r[i], reverse=True)
-            gradient = np.sum([u[k] * epsilon[sorted_indices[k]] for k in range(2 * self.J)], axis=0) / nu2
+
+            # calculate gradient
+            grad_log_pi = [np.concatenate((
+                    epsilon[k] / self.strategies.nu,
+                    (epsilon[k] ** 2 - 1) / self.strategies.nu
+                ), axis=None) for k in range(2 * self.J)]
+            gradient = np.sum([u[k] * grad_log_pi[sorted_indices[k]] for k in range(2 * self.J)], axis=0)
+            
+            # fisher matrix and natural gradient
+            F = np.sum([grad_log_pi[k].reshape(-1,1) @ grad_log_pi[k].reshape(-1,1).T 
+                        for k in range(2 * self.J)], axis=0) / (2 * self.J)
+            inv_F = np.linalg.inv(F)
+            inv_F /= np.amax(inv_F)
+            natural_gradient = inv_F @ gradient
 
             # non fitness shaping
             # gradient = np.sum([r[k] * epsilon[k] for k in range(2 * self.J)], axis=0) / (nu2 * self.J)
 
             # Adam optimize
-            self.strategies.update(gradient, alpha2, (beta1, beta2), eps)
+            self.strategies.update(natural_gradient, alpha2, (beta1, beta2), eps)
 
             # save network param & adam param
-            torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
+            # torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
 
-            end_time = time.time()
-            print(f'end time: {time.asctime(time.localtime(end_time))}')
-            print(f'execute time: {(end_time - start_time) / 60} min')
+            # end_time = time.time()
+            # print(f'end time: {time.asctime(time.localtime(end_time))}')
+            # print(f'execute time: {(end_time - start_time) / 60} min')
+            torch.set_grad_enabled(True)
 
 
     def training(self):
         mp.set_start_method('spawn')
-        self.MiniMax(self.cfgs.train.alpha1, self.cfgs.train.nu1, self.cfgs.train.alpha2, self.cfgs.train.nu2)
+        self.MiniMax(self.cfgs.train.alpha2)
         torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
 
 

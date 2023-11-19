@@ -21,6 +21,7 @@ class Net(nn.Module):
             "v_hat": torch.tensor(0),
         }
         self.d = sum(p.numel() for p in self.parameters())
+        self.nu = torch.full((self.d,), nu)
 
         # self.xavier_init()
         for param in self.parameters():
@@ -29,18 +30,16 @@ class Net(nn.Module):
 
     def forward(self, s):
         assert torch.all(s > 0)
-        with torch.no_grad():
-            a = F.relu(self.fc1(s))
-            a = F.relu(self.fc2(a))
-            a = self.fc3(a)
-            # a = torch.min(torch.max(a, torch.zeros_like(a)), s)
+        a = F.relu(self.fc1(s))
+        a = F.relu(self.fc2(a))
+        a = self.fc3(a)
         return a
 
     
     def update(self, grad, alpha, beta, eps=1e-8):
         beta1, beta2 = beta
         if isinstance(grad, np.ndarray):
-            return torch.from_numpy(grad)
+            grad = torch.from_numpy(grad)
 
         self.adam_param['t'] += 1
         self.adam_param['m'] = beta1 * self.adam_param['m'] + (1 - beta1) * grad
@@ -50,9 +49,10 @@ class Net(nn.Module):
 
         delta_param = alpha * self.adam_param['m_hat'] / (torch.sqrt(self.adam_param['v_hat']) + eps)
 
-        with torch.no_grad():
-            for param, delta in zip(self.parameters(), delta_param):
-                param.data.add_(delta)
+        for param, delta in zip(self.parameters(), delta_param[:self.d]):
+            param.data.add_(delta)
+        
+        self.nu += delta_param[self.d:]
 
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):

@@ -47,6 +47,8 @@ if __name__ == '__main__':
             from scripts.train_dnn import Trainer
         elif args.method == 'ES':
             from scripts.train_es import Trainer
+        elif args.method == 'CMAES':
+            from scripts.train_cmaes import Trainer
         trainer = Trainer(cfgs)
         trainer.training()
     elif args.mode == 'test':
@@ -69,6 +71,8 @@ if __name__ == '__main__':
             from scripts.eval_nn import Evaluator
         elif args.method == 'ES':
             from scripts.eval_es import Evaluator
+        elif args.method == 'CMAES':
+            from scripts.eval_cmaes import Evaluator
         evaluator = Evaluator(cfgs)
         evaluator.evaluating()
     else:
