@@ -21,3 +21,16 @@ class Net(nn.Module):
         a = F.relu(self.fc2(a))
         a = self.fc3(a)
         return a
+
+
+if __name__ == '__main__':
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from utils.utils import fix_seed
+
+    net = Net(num_agents=1, num_actions=1)
+    net.load_state_dict(torch.load(r'./results/models/cmaes.pth'))
+    print(sum(p.numel() for p in net.parameters()))
+    for p in net.named_parameters():
+        print(p)

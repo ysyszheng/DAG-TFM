@@ -54,11 +54,18 @@ def plot_fee_distribution():
     fee_data = np.load(fee_data_file)
     fee_data_filtered = fee_data[fee_data < 40000]
 
-    plt.hist(fee_data_filtered, bins=50, alpha=0.7, density=True)
+    frequencies, bins, _ = plt.hist(fee_data_filtered, bins=int(np.sqrt(len(fee_data_filtered))), color='blue', alpha=0.7, density=True)
     plt.xlabel('Fee Amount')
     plt.ylabel('Frequency')
-    plt.title('Fee Distribution (Values < 40000)')
-    plt.grid(True)
+    plt.title('Fee Distribution')
+    # plt.grid(True)
+
+    max_frequency = max(frequencies)
+    max_frequency_index = np.argmax(frequencies)
+    corresponding_bin = bins[max_frequency_index]
+    print(corresponding_bin)
+    plt.ylim(0, max_frequency * 1.1)
+    plt.savefig(r'./assets/hist.png')
     plt.show()
 
 def transform_fee_distribution():
@@ -115,6 +122,6 @@ def fit_fee_distribution():
 if __name__ == '__main__':
     # get_fee_each_month()
     # get_fee()
-    # plot_fee_distribution()
-    transform_fee_distribution()
+    plot_fee_distribution()
+    # transform_fee_distribution()
     # fit_fee_distribution()
