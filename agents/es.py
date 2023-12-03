@@ -6,13 +6,13 @@ from typing import Tuple
 
 
 class Net(nn.Module):
-    def __init__(self, num_agents, num_actions, nu=0.05):
+    def __init__(self, num_agents, num_actions, nu=0.05, hls=16):
         super(Net, self).__init__()
         self.num_agents = num_agents
         self.num_actions = num_actions
-        self.fc1 = nn.Linear(num_agents, 32)
-        self.fc2 = nn.Linear(32, 32)
-        self.fc3 = nn.Linear(32, num_actions)
+        self.fc1 = nn.Linear(num_agents, hls)
+        self.fc2 = nn.Linear(hls, hls)
+        self.fc3 = nn.Linear(hls, num_actions)
         self.adam_param = {
             "t": 0,
             "m": torch.tensor(0),
@@ -23,7 +23,7 @@ class Net(nn.Module):
         self.d = sum(p.numel() for p in self.parameters())
         self.nu = torch.full((self.d,), nu)
 
-        # self.xavier_init()
+        self.xavier_init()
         for param in self.parameters():
             param.data = param.data.to(torch.float64)
 

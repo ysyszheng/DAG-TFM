@@ -1,25 +1,33 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributions import Normal as N
 
 
 class Net(nn.Module):
-    def __init__(self, num_agents, num_actions, hidden_layer_size=(32,32)):
+    def __init__(self, num_agents, num_actions, hidden_layer_size=(16,16)):
         super(Net, self).__init__()
         self.num_agents = num_agents
         self.num_actions = num_actions
 
         self.fc1 = nn.Linear(num_agents, hidden_layer_size[0])
         self.fc2 = nn.Linear(hidden_layer_size[0], hidden_layer_size[1])
-        self.fc3 = nn.Linear(hidden_layer_size[1], num_actions)
+        self.fc_mean = nn.Linear(hidden_layer_size[1], num_actions)
+        self.fc_std = nn.Linear(hidden_layer_size[1], num_actions)
 
         torch.set_grad_enabled(False)
 
     def forward(self, s):
         assert torch.all(s > 0)
-        a = F.relu(self.fc1(s))
-        a = F.relu(self.fc2(a))
-        a = self.fc3(a)
+
+        x = F.relu(self.fc1(s))
+        x = F.relu(self.fc2(x))
+        mean = self.fc_mean(x)
+        raw_std = self.fc_std(x)
+        std = F.softplus(raw_std) + 1e-8
+
+        dist = N(mean, std)
+        a = dist.sample()
         return a
 
 

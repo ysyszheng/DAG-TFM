@@ -2,21 +2,22 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
 import numpy as np
 from envs.DAGEnv import DAGEnv
 from agents.es import Net
-from utils.utils import log, fix_seed
+from utils.utils import log, fix_seed, init_logger
 from tqdm import tqdm
 from easydict import EasyDict as edict
 import csv
 import torch
 import gym
 import concurrent.futures as cf
-import logging
 import time
 import torch.multiprocessing as mp
 from copy import deepcopy
 import matplotlib.pyplot as plt
+from typing import List
 
 
 class Trainer(object):
@@ -29,7 +30,6 @@ class Trainer(object):
         self.device = torch.device('cpu')
 
         self.strategies = Net(num_agents=1, num_actions=1, nu=self.cfgs.train.nu2).to(self.device)
-        self.strategies.load_state_dict(torch.load(r'./models/es_0.pth')) # TODO: delete
         self.d = self.strategies.d
         self.J = int(4 + 3 * np.floor(np.log(self.d))) // 2 # 25 / 2
 
@@ -38,6 +38,9 @@ class Trainer(object):
             clip_value=cfgs.clip_value, max_agents_num=cfgs.max_agents_num,
             lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
         )
+
+        self.logger = init_logger(__name__, os.path.join(cfgs.results_subdirs[3], f'{cfgs.lambd}_{cfgs.is_burn}_{cfgs.a}.log'))
+        self.logger.info(f'Trainer start, lambda: {cfgs.lambd}, is_burn: {cfgs.is_burn}, a: {cfgs.a}')
 
 
     def OriginalMinusRegret(self, strategies: Net, alpha1=.01, nu1=.1):
@@ -203,19 +206,34 @@ class Trainer(object):
         return -loss, x, y_hat, y
 
 
-    def NESworker(self, j, nu2, epsilon):
+    def NESworker(self, e, i, seed):
         """Natural Evolution Strategies
         """
-        strategies_copy = Net(num_agents=1, num_actions=1).to(self.device)
-        strategies_copy.load_state_dict(self.strategies.state_dict())
+        logger = init_logger(__name__, os.path.join(self.cfgs.results_subdirs[3], f'{self.cfgs.lambd}_{self.cfgs.is_burn}_{self.cfgs.a}.log'))
+        fix_seed(seed)
 
+        snet = Net(num_agents=1, num_actions=1).to(self.device)
+        snet.load_state_dict(self.strategies.state_dict())
         with torch.no_grad():
-            for param, delta in zip(strategies_copy.parameters(), nu2 * epsilon):
+            for param, delta in zip(snet.parameters(), snet.nu * e):
                 param.data.add_(delta)
 
-        r_j = self.MinusRegret(strategies_copy) # minus regret of agent 0
+        env = deepcopy(self.env)
 
-        return j, r_j
+        regret = []
+        for _ in range(self.cfgs.train.expect_time):
+            state = env.reset()
+            
+            action = snet(torch.FloatTensor(state).to(torch.float64)\
+                .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
+            _, opt_reward = env.find_optim_action(action, idx=0)
+            _, reward, _ = env.step_without_packing(action)
+            regret.append((opt_reward - reward[0]) / state[0])
+
+        res = sum(regret) / len(regret)
+        logger.debug(f'worker {i} end, regret: {res}')
+
+        return i, -res
 
     
     def MiniMax(self, alpha2, beta1=.9, beta2=.999, eps=1e-8):
@@ -223,53 +241,23 @@ class Trainer(object):
         use adam to optimize lr alpha2
         """
         torch.set_grad_enabled(False)
-        strategies_new = Net(num_agents=1, num_actions=1).to(self.device)
+
         for t in range(self.cfgs.train.outer_iterations):
             # print(f'************* iter: {t} *************')
-            # start_time = time.time()
+            start_time = time.time()
             # print(f'start time: {time.asctime(time.localtime(start_time))}')
-
-            # # before update
-            # with mp.Pool(processes=self.cfgs.train.inner_oracle_query_times) as p:
-            # # with mp.Pool(processes=mp.cpu_count()) as p:
-            #     results = p.starmap(self.EPSworker, [(self.strategies,)
-            #                     for _ in range(self.cfgs.train.inner_oracle_query_times)])
-            #     print(f'update time {t}>>> epsilon: {np.amax(results)}')
-            loss, x, y_hat, y = self.TESTworker(self.strategies)
-            if t % 50 == 0:
-                plt.figure(figsize=(8, 6))
-                plt.scatter(x, y_hat, label='Predicted y_hat', alpha=0.5, color='red')
-                plt.scatter(x, y, label='True y', alpha=0.5, color='blue')
-                plt.xlabel('x')
-                plt.ylabel('y')
-                plt.title('Comparison between Predicted y_hat and True y')
-                plt.legend()
-                plt.grid(True)
-                plt.savefig(f'./img/{t}.png')
-                plt.show()
-                print(f'update time {t}>>> loss: {-loss}')
 
             epsilon = np.random.normal(0, 1, size=(self.J, self.d))
             epsilon = np.concatenate((epsilon, -epsilon), axis=0)
             u = np.zeros(2 * self.J)
             r = np.zeros(2 * self.J)
 
-            # max epsilon-BNE
-            for j in range(2 * self.J):
-                strategies_new.load_state_dict(self.strategies.state_dict())
-                with torch.no_grad():
-                    for param, delta in zip(strategies_new.parameters(), self.strategies.nu * epsilon[j]):
-                        param.data.add_(delta)
+            with mp.Pool(processes=mp.cpu_count()) as p:
+                results = p.starmap(self.NESworker, [(epsilon[i], i, 
+                        t * 2 * self.J + i) for i in range(2 * self.J)])
+                for result in results:
+                    r[result[0]] = result[1]
 
-                # with mp.Pool(processes=self.cfgs.train.inner_oracle_query_times) as p:
-                #     results = p.starmap(self.EPSworker, [(strategies_new,)
-                #                     for _ in range(self.cfgs.train.inner_oracle_query_times)]
-                #     r[j] = -np.amax(results)
-                #     # r[j] = -np.mean(results)
-                #     print(f'try {j}>>> epsilon: {np.amax(results)}, regret: {np.mean(results)}')
-                r[j], _, _, _ = self.TESTworker(strategies_new)
-                # print(f'try {j}>>> loss: {-r[j]}')
-            
             # fitness shaping
             for k in range(1, 2 * self.J + 1):
                 u[k - 1] = max(0, np.log(self.J + 1) - np.log(k))
@@ -290,6 +278,7 @@ class Trainer(object):
             inv_F = np.linalg.inv(F)
             inv_F /= np.amax(inv_F)
             natural_gradient = inv_F @ gradient
+            # logger.debug(natural_gradient)
 
             # non fitness shaping
             # gradient = np.sum([r[k] * epsilon[k] for k in range(2 * self.J)], axis=0) / (nu2 * self.J)
@@ -298,18 +287,19 @@ class Trainer(object):
             self.strategies.update(natural_gradient, alpha2, (beta1, beta2), eps)
 
             # save network param & adam param
-            # torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
+            torch.save(self.strategies.state_dict(), os.path.join(self.cfgs.results_subdirs[0], f'{self.cfgs.lambd}_{self.cfgs.is_burn}_{self.cfgs.a}.pth'))
 
-            # end_time = time.time()
+            end_time = time.time()
             # print(f'end time: {time.asctime(time.localtime(end_time))}')
-            # print(f'execute time: {(end_time - start_time) / 60} min')
-            torch.set_grad_enabled(True)
+            self.logger.info(f'update time {t}\tmin regret: {min(-r)}\texecute time: {(end_time - start_time) / 60} min')
+    
+        torch.set_grad_enabled(True)
 
 
     def training(self):
         mp.set_start_method('spawn')
         self.MiniMax(self.cfgs.train.alpha2)
-        torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
+        # torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
 
 
 if __name__ == '__main__':

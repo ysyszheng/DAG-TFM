@@ -4,7 +4,10 @@ path:
   sw_path: ./results/data/cmaes_sw.npy
 model:
 train:
-  query_time: 100
-  hidden_layer_size: (32,32)
+  query_time: 10
+  expect_time: 10
+  hidden_layer_size: (16,16)
 eval:
   test_round: 1000
+  query_time: 5000
+  expect_time: 10

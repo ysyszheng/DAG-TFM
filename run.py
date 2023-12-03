@@ -12,6 +12,9 @@ if __name__ == '__main__':
     parser.add_argument('--method', type=str, default=None, help='Mode Name')
     parser.add_argument('--mode', type=str, default='train', help='Mode Name')
     parser.add_argument('--cfg', type=str, default=None, help='Config Path')
+    parser.add_argument('--lambd', type=float, default=None, help='')
+    parser.add_argument('--is_burn', type=int, default=None, help='')
+    parser.add_argument('--a', type=float, default=None, help='')
     args = parser.parse_args()
 
     with open(BASE_CONFIGS_PATH, 'r') as cfgs_file:
@@ -26,6 +29,11 @@ if __name__ == '__main__':
     cfgs = edict(cfgs)
     cfgs.update(base_cfgs)
 
+    cfgs.lambd = args.lambd if args.lambd is not None else cfgs.lambd
+    cfgs.is_burn = args.is_burn if args.is_burn is not None else cfgs.is_burn
+    cfgs.a = args.a if args.a is not None else cfgs.a
+
+    cfgs.a = cfgs.a if cfgs.is_burn != 0 else None
     cfgs.method = args.method if args.method is not None else None
     cfgs.mode = args.mode if args.mode is not None else None
 

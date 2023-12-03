@@ -31,7 +31,8 @@ class DAGEnv(gym.Env):
                  delta,
                  a,
                  b,
-                 is_burn=False):
+                 is_burn=False,
+                 seed=None):
         self.max_agents_num = max_agents_num
         self.lambd = lambd
         self.delta = delta
@@ -55,6 +56,9 @@ class DAGEnv(gym.Env):
             self.fee_list = self.fee_list[self.fee_list <= self.clip_value]
         self.state_mean = np.mean(self.fee_list)
         self.state_std = np.std(self.fee_list)
+
+        if seed is not None:
+            fix_seed(seed)
 
 
     def f(self, p):
@@ -231,10 +235,6 @@ class DAGEnv(gym.Env):
         def G(l, z):
             assert l >= 0 and l < self.num_agents
             res = 0
-            # with mp.Pool(processes=mp.cpu_count()) as pool:
-            #     results = pool.map(self.invf_with_clip, z/(v[:l+1]))
-            #     for h, result in enumerate(results):
-            #         res += k[h] * result
             for h in range(l+1):
                 res += k[h] * self.invf_with_clip(z/(v[h]))
             return (res - self.b)
@@ -272,11 +272,16 @@ class DAGEnv(gym.Env):
     def calculate_rewards(self, actions):
         rewards = np.zeros(self.num_agents)
 
-        if self.is_burn:
+        if self.is_burn == 2:
+            actions_burn = np.where(actions >= 0, actions ** self.a, actions)
+            probabilities = self.calculate_probabilities(actions_burn)
+        elif self.is_burn == 1:
             actions_burn = np.where(actions >= 0, self.a * np.log(1 + actions / self.a), actions)
             probabilities = self.calculate_probabilities(actions_burn)
-        else:
+        elif self.is_burn == 0:
             probabilities = self.calculate_probabilities(actions)
+        else:
+            raise ValueError
 
         for i in range(self.num_agents):
             private_value = self.state[i]
@@ -327,49 +332,30 @@ if __name__ == '__main__':
     with open(BASE_CONFIGS_PATH, 'r') as cfg_file:
         base_cfgs = yaml.load(cfg_file, Loader=yaml.FullLoader)
     base_cfgs = edict(base_cfgs)
-    
-    fix_seed(base_cfgs.seed)
-    
-    env = DAGEnv(
-            fee_data_path=base_cfgs.fee_data_path,
-            is_clip=base_cfgs.is_clip,
-            clip_value=base_cfgs.clip_value,
-            max_agents_num=base_cfgs.max_agents_num,
-            lambd=base_cfgs.lambd,
-            delta=base_cfgs.delta,
-            b=base_cfgs.b,
-            a=base_cfgs.a,
-            is_burn=base_cfgs.is_burn
-    )
-    state = env.reset()
 
-    print(f'idx,state,action,reward')
-    for i in range(10):
+    def worker(lambd):
+        fix_seed(base_cfgs.seed)
+        env = DAGEnv(
+                fee_data_path=base_cfgs.fee_data_path,
+                is_clip=base_cfgs.is_clip,
+                clip_value=base_cfgs.clip_value,
+                max_agents_num=base_cfgs.max_agents_num,
+                lambd=lambd,
+                delta=base_cfgs.delta,
+                b=base_cfgs.b,
+                a=0.01,
+                is_burn=0,
+        )
         state = env.reset()
-        action, reward = env.find_nash_equilibrium()
-        for s, a, r in zip(state, action, reward):
-            print(i, ',', s, ',', a, ',', r)
+        
+        throughput_list = []
+        sw_list = []
+        
+        for _ in range(100):
+            state, _, _ , info = env.step(state)
+            throughput_list.append(info["throughput"])
+            sw_list.append(info['total_private_value'])
+        print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')
 
-    # is_burn = False
-    # for lambd in range(1,11):
-    #     env = DAGEnv(
-    #             fee_data_path=base_cfgs.fee_data_path,
-    #             is_clip=base_cfgs.is_clip,
-    #             clip_value=base_cfgs.clip_value,
-    #             max_agents_num=base_cfgs.max_agents_num,
-    #             lambd=lambd,
-    #             delta=base_cfgs.delta,
-    #             b=base_cfgs.b,
-    #             a=base_cfgs.a,
-    #             is_burn=is_burn
-    #     )
-    #     state = env.reset()
-        
-    #     throughput_list = []
-    #     sw_list = []
-        
-    #     for _ in range(10):
-    #         state, _, _ , info = env.step(state)
-    #         throughput_list.append(info["throughput"])
-    #         sw_list.append(info['total_private_value'])
-    #     print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')
+    with mp.Pool(processes=mp.cpu_count()) as p:
+        p.map(worker, [5])

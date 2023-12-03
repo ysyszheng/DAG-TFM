@@ -36,6 +36,25 @@ def log(*args):
         print(colored_msg, *args)
 
 
+def init_logger(logger_name, file_path: str):
+    import logging
+    logger = logging.getLogger(logger_name)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger.setLevel(logging.DEBUG)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    file_handler = logging.FileHandler(file_path)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    return logger
+
+
 def warpper(data):
     if isinstance(data, np.ndarray):
         return torch.from_numpy(data)
