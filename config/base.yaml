@@ -10,7 +10,8 @@ max_agents_num: 500               # number of txs in delta time, i.e. txs arriva
 lambd: 1.                         # block generation (Poisson process or other) rate in unit time
 delta: 1.                         # network propagation delay (need div delta when calc throughput TPS)
 b: 50                             # block size
-is_burn: 0                        # 0-nonburn, 1-log, 2-poly
+is_burn: 1                        # 0-nonburn, 1-log, 2-poly
 a: 1.                             # used in a * log(1 + x/a)
-is_clip: False                    # clip private value to an upper bound
-clip_value: 40000                 # upper bound value
+is_clip: True                     # clip private value to an upper bound
+clip_value: 100000000             # upper bound value
+sats_to_btc: False                # unit from SATS to BTC

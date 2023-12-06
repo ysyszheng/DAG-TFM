@@ -37,6 +37,15 @@ if __name__ == '__main__':
     cfgs.method = args.method if args.method is not None else None
     cfgs.mode = args.mode if args.mode is not None else None
 
+    burn_flag = ['no', 'log', 'poly']
+    cfgs.burn_flag = burn_flag[cfgs.is_burn]
+
+    cfgs.path.model_path = os.path.join(cfgs.results_subdirs[0], 
+                f'{cfgs.method}_{cfgs.lambd}_{cfgs.burn_flag}_{cfgs.a}.pth')
+    cfgs.path.img_path = os.path.join(cfgs.results_subdirs[2], 
+                f'{cfgs.method}_{cfgs.lambd}_{cfgs.burn_flag}_{cfgs.a}.img')
+    cfgs.path.log_path = os.path.join(cfgs.results_subdirs[3], 
+                f'{cfgs.method}_{cfgs.mode}_{cfgs.lambd}_{cfgs.burn_flag}_{cfgs.a}.log')
 
     if args.mode == 'train':
         os.makedirs(cfgs.results_path, exist_ok=True)
@@ -68,6 +77,8 @@ if __name__ == '__main__':
             from scripts.test_nn import Tester
         elif args.method == 'ES':
             from scripts.test_es import Tester
+        # args.method == 'CMAES':
+        #     from scripts.test_cmaes import Tester
         tester = Tester(cfgs)
         tester.testing()
     elif args.mode == 'eval':

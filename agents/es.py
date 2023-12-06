@@ -49,10 +49,10 @@ class Net(nn.Module):
 
         delta_param = alpha * self.adam_param['m_hat'] / (torch.sqrt(self.adam_param['v_hat']) + eps)
 
-        for param, delta in zip(self.parameters(), delta_param[:self.d]):
+        for param, delta in zip(self.parameters(), delta_param):
             param.data.add_(delta)
         
-        self.nu += delta_param[self.d:]
+        # self.nu += delta_param[self.d:]
 
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):

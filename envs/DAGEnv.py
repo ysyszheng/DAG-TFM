@@ -32,7 +32,8 @@ class DAGEnv(gym.Env):
                  a,
                  b,
                  is_burn=False,
-                 seed=None):
+                 seed=None,
+                 sats_to_btc=False):
         self.max_agents_num = max_agents_num
         self.lambd = lambd
         self.delta = delta
@@ -42,6 +43,7 @@ class DAGEnv(gym.Env):
         self.eps = 1e-8
         self.is_clip = is_clip
         self.clip_value = clip_value
+        self.sats_to_btc = sats_to_btc
 
         # action: transaction fee
         self.action_space = spaces.Box(
@@ -54,6 +56,9 @@ class DAGEnv(gym.Env):
         self.fee_list = self.fee_list[self.fee_list > 0] # remove 0
         if self.is_clip:
             self.fee_list = self.fee_list[self.fee_list <= self.clip_value]
+        if self.sats_to_btc:
+            self.fee_list /= 1e8
+
         self.state_mean = np.mean(self.fee_list)
         self.state_std = np.std(self.fee_list)
 

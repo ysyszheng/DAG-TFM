@@ -61,23 +61,30 @@ def plot_tx_fee_vs_private_value(csv_file_path, step):
     plt.show()
 
 
-def plot_strategies(max_value=10000):
+def plot_strategies():
     import torch
     from agents.es import Net
-    # from utils import fix_seed
-    # fix_seed(3407)
+
     device = torch.device('cpu')
     strategies = Net(num_agents=1, num_actions=1).to(device)
-    strategies.load_state_dict(torch.load(r'./results/models/1.0_0_None.pth'))
-    x = np.linspace(1, max_value, 100)
+    strategies.load_state_dict(torch.load(r'./results/models/ES_1.0_no_None.pth'))
+    # print(strategies.nu)
+
+    x = np.logspace(np.log10(1e-8), 0, 1000)
     y = strategies(torch.FloatTensor(x).to(torch.float64)\
         .reshape(-1, 1).to(device)).squeeze().detach().cpu().numpy()
+
     plt.figure()
-    plt.scatter(x, y, s=5, alpha=0.8)
-    plt.title('NES strategies')
-    plt.xlabel('Private Value')
+    plt.plot(x, x, color='red', alpha=.5, label='Truthful')
+    # plt.plot(x, np.zeros_like(x), color='green', alpha=.5, label='Zero')
+    plt.plot(x, y, color='blue', label='Strategy')
+    plt.title('Fee - Valuation')
+    plt.xlabel('Valuation')
     plt.ylabel('Transaction Fee')
-    plt.savefig(f'./results/img/1.0_0_None.png')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.legend()
+    plt.savefig(f'./results/img/ES_1.0_no_None.png')
     plt.show()
 
 

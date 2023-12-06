@@ -5,13 +5,13 @@ tmp/
 log/
 *.log
 backup/
+*.backup
 data/*.tsv.gz
 data/*.tsv
-rewards*/
-img/
+# img/
 # models/
 out/
-results*/
+# results*/
 fee.pkl
 fee_*
 

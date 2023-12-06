@@ -34,12 +34,12 @@ class Trainer(object):
 
         self.strategy = Net(num_agents=1, num_actions=1, hidden_layer_size=self.hls).\
           to(self.device)
-        self.strategies = []
 
         self.env: DAGEnv = gym.make('gym_dag_env-v0', 
             fee_data_path=cfgs.fee_data_path, is_clip=cfgs.is_clip, 
             clip_value=cfgs.clip_value, max_agents_num=cfgs.max_agents_num,
             lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
+            sats_to_btc=cfgs.sats_to_btc
         )
 
 
@@ -53,22 +53,25 @@ class Trainer(object):
               reshape(self.hls[1], self.hls[0]),
             'fc2.bias': params[2 * self.hls[0] + self.hls[0] * self.hls[1] : 2 * self.hls[0] + self.hls[0] * self.hls[1] + self.hls[1]].\
               reshape(self.hls[1]),
-            'fc_mean.weight': params[2 * self.hls[0] + self.hls[0] * self.hls[1] + self.hls[1] : 2 * self.hls[0] + self.hls[0] * self.hls[1] + 2 * self.hls[1]].\
+            'fc3.weight': params[2 * self.hls[0] + self.hls[0] * self.hls[1] + self.hls[1] : 2 * self.hls[0] + self.hls[0] * self.hls[1] + 2 * self.hls[1]].\
               reshape(1, self.hls[1]),
-            'fc_mean.bias': params[2 * self.hls[0] + self.hls[0] * self.hls[1] + 2 * self.hls[1] : 2 * self.hls[0] + self.hls[0] * self.hls[1] + 2 * self.hls[1] + 1].\
+            'fc3.bias': params[2 * self.hls[0] + self.hls[0] * self.hls[1] + 2 * self.hls[1] : 2 * self.hls[0] + self.hls[0] * self.hls[1] + 2 * self.hls[1] + 1].\
               reshape(1),
-            'fc_std.weight': params[2 * self.hls[0] + self.hls[0] * self.hls[1] + 2 * self.hls[1] + 1 : 2 * self.hls[0] + self.hls[0] * self.hls[1] + 3 * self.hls[1] + 1].\
-              reshape(1, self.hls[1]),
-            'fc_std.bias': params[2 * self.hls[0] + self.hls[0] * self.hls[1] + 3 * self.hls[1] + 1 : ].\
-              reshape(1),
+            # 'fc_std.weight': params[2 * self.hls[0] + self.hls[0] * self.hls[1] + 2 * self.hls[1] + 1 : 2 * self.hls[0] + self.hls[0] * self.hls[1] + 3 * self.hls[1] + 1].\
+            #   reshape(1, self.hls[1]),
+            # 'fc_std.bias': params[2 * self.hls[0] + self.hls[0] * self.hls[1] + 3 * self.hls[1] + 1 : ].\
+            #   reshape(1),
         }
 
 
-    def fitness_function_ea(self, i: int):
+    def fitness_function_ea(self, params, i: int):
         # set local env and seed for every subprocesss
         local_env = deepcopy(self.env)
-        torch.manual_seed(i)
-        np.random.seed(i)
+        fix_seed(i)
+
+        snet = Net(num_agents=1, num_actions=1, hidden_layer_size=self.hls).\
+          to(self.device)
+        snet.load_state_dict(self.reshape_params(params))
 
         state = local_env.reset()
         regret = 0
@@ -77,6 +80,7 @@ class Trainer(object):
               .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
             _, opt_reward = local_env.find_optim_action(action, idx=0)
             next_state, reward, _ = local_env.step_without_packing(action)
+            opt_reward = reward[0] if opt_reward < reward[0] else opt_reward
             regret += (opt_reward - reward[0]) / state[0]
             state = next_state
 
@@ -112,8 +116,7 @@ class Trainer(object):
         init_params = [
             self.strategy.fc1.weight.data.numpy(), self.strategy.fc1.bias.data.numpy(),
             self.strategy.fc2.weight.data.numpy(), self.strategy.fc2.bias.data.numpy(),
-            self.strategy.fc_mean.weight.data.numpy(), self.strategy.fc_mean.bias.data.numpy(),
-            self.strategy.fc_std.weight.data.numpy(), self.strategy.fc_std.bias.data.numpy(),
+            self.strategy.fc3.weight.data.numpy(), self.strategy.fc3.bias.data.numpy(),
         ]
         init_params_flat = np.concatenate([param.flatten() for param in init_params])
 
@@ -124,18 +127,15 @@ class Trainer(object):
         while not es.stop():
             cnt += 1
             st = time.time()
-            print(f'update {cnt} >>> start time: {time.asctime(time.localtime(st))}')
+            # print(f'update {cnt} >>> start time: {time.asctime(time.localtime(st))}')
             
             # CMA-ES
             solutions = [best_params[i] for i in range(es.popsize)]
-            results = [None for _ in range(es.popsize)]
-            for i, params in enumerate(solutions):
-                self.strategy.load_state_dict(self.reshape_params(params))
-                with mp.Pool(processes=mp.cpu_count()) as p:
-                    result = p.map(self.fitness_function_ea, 
-                              [j + i * mp.cpu_count() for j in range(mp.cpu_count())])
-                    results[i] = sum(result) / len(result)
-                    print(f'update {cnt} try {i} >>> regret: {results[i]}')
+
+            with mp.Pool(processes=mp.cpu_count()) as p:
+                results = p.starmap(self.fitness_function_ea, 
+                          [(solutions[j], j + (cnt - 1) * len(solutions),) for j in range(len(solutions))])
+                print(f'update {cnt} >>> result: {results}')
 
             # optimize and gen new params
             es.tell(solutions, results)
@@ -144,12 +144,11 @@ class Trainer(object):
             # save model
             best_idx = results.index(min(results))
             best_solution = solutions[best_idx]
-            self.strategies.append(self.reshape_params(best_solution))
-            torch.save(self.strategies, self.cfgs.path.model_path)
+            torch.save(self.reshape_params(best_solution), self.cfgs.path.model_path)
 
             et = time.time()
             # print(f'update {cnt} >>> end time: {time.asctime(time.localtime(et))}')
-            print(f'update {cnt} >>> execute time: {(et - st) / 60} min')
+            # print(f'update {cnt} >>> execute time: {(et - st) / 60} min')
 
         # best_solution = best_params[0]
         # torch.save(self.reshape_params(best_solution), self.cfgs.path.model_path)
@@ -157,21 +156,44 @@ class Trainer(object):
 
 if __name__ == '__main__':
     import yaml
+    import argparse
+
     BASE_CONFIGS_PATH = r'./config/base.yaml'
-    ES_CONFIGS_PATH = r'./config/es.yaml'
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--lambd', type=float, default=None, help='')
+    parser.add_argument('--is_burn', type=int, default=None, help='')
+    parser.add_argument('--a', type=float, default=None, help='')
+    args = parser.parse_args()
+    burn_flag = ['no', 'log', 'poly']
+    args.burn_flag = burn_flag[args.is_burn]
+    fn = f'CMAES_{args.lambd}_{args.burn_flag}_{args.a}'
 
     with open(BASE_CONFIGS_PATH, 'r') as cfgs_file:
         base_cfgs = yaml.load(cfgs_file, Loader=yaml.FullLoader)
     base_cfgs = edict(base_cfgs)
 
-    if ES_CONFIGS_PATH is not None:
-        with open(ES_CONFIGS_PATH, 'r') as cfgs_file:
-            cfgs = yaml.load(cfgs_file, Loader=yaml.FullLoader)
-    else:
-        cfgs = {}
-    cfgs = edict(cfgs)
-    cfgs.update(base_cfgs)
+    env: DAGEnv = gym.make('gym_dag_env-v0', 
+        fee_data_path=base_cfgs.fee_data_path, is_clip=base_cfgs.is_clip, 
+        clip_value=base_cfgs.clip_value, max_agents_num=base_cfgs.max_agents_num,
+        lambd=args.lambd, delta=base_cfgs.delta, a=args.a, b=base_cfgs.b, is_burn=args.is_burn,
+        sats_to_btc=base_cfgs.sats_to_btc, seed=int(time.time())
+    )
 
-    trainer = Trainer(cfgs)
-    trainer.strategy.load_state_dict(torch.load(cfgs.path.model_path))
-    
+    device = torch.device('cpu')
+    strategies = Net(num_agents=1, num_actions=1).to(device)
+    strategies.load_state_dict(torch.load(f'./results/models/{fn}.pth'))
+
+    x = env.reset()
+    y = strategies(torch.FloatTensor(x)\
+        .reshape(-1, 1).to(device)).squeeze().detach().cpu().numpy()
+
+    plt.figure()
+    plt.plot(x, x, color='red', label='Truthful')
+    plt.scatter(x, y, s=5, alpha=.8, color='blue', label='Strategy')
+    plt.title('Fee - Valuation')
+    plt.xlabel('Valuation')
+    plt.ylabel('Transaction Fee')
+    plt.legend()
+    plt.savefig(f'./results/img/{fn}.png')
+    plt.show()

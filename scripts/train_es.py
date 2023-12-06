@@ -37,10 +37,10 @@ class Trainer(object):
             fee_data_path=cfgs.fee_data_path, is_clip=cfgs.is_clip, 
             clip_value=cfgs.clip_value, max_agents_num=cfgs.max_agents_num,
             lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
+            sats_to_btc=cfgs.sats_to_btc,
         )
 
-        self.logger = init_logger(__name__, os.path.join(cfgs.results_subdirs[3], f'{cfgs.lambd}_{cfgs.is_burn}_{cfgs.a}.log'))
-        self.logger.info(f'Trainer start, lambda: {cfgs.lambd}, is_burn: {cfgs.is_burn}, a: {cfgs.a}')
+        self.logger = init_logger(__name__, self.cfgs.path.log_path)
 
 
     def OriginalMinusRegret(self, strategies: Net, alpha1=.01, nu1=.1):
@@ -209,8 +209,9 @@ class Trainer(object):
     def NESworker(self, e, i, seed):
         """Natural Evolution Strategies
         """
-        logger = init_logger(__name__, os.path.join(self.cfgs.results_subdirs[3], f'{self.cfgs.lambd}_{self.cfgs.is_burn}_{self.cfgs.a}.log'))
+        logger = init_logger(__name__, self.cfgs.path.log_path)
         fix_seed(seed)
+        logger.debug(f'worker {i} start')
 
         snet = Net(num_agents=1, num_actions=1).to(self.device)
         snet.load_state_dict(self.strategies.state_dict())
@@ -223,19 +224,40 @@ class Trainer(object):
         regret = []
         for _ in range(self.cfgs.train.expect_time):
             state = env.reset()
-            
             action = snet(torch.FloatTensor(state).to(torch.float64)\
                 .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
             _, opt_reward = env.find_optim_action(action, idx=0)
             _, reward, _ = env.step_without_packing(action)
             regret.append((opt_reward - reward[0]) / state[0])
 
-        res = sum(regret) / len(regret)
-        logger.debug(f'worker {i} end, regret: {res}')
+        mean_ = sum(regret) / len(regret)
+        max_ = max(regret)
+        logger.debug(f'worker {i} end, mean regret: {mean_}, max regret: {max_}, regret: {regret}')
 
-        return i, -res
+        return i, -mean_ # TODO!
 
+
+    def eval_(self):
+        logger = init_logger(__name__, self.cfgs.path.log_path)
+        logger.debug(f'worker eval start')
+        # fix_seed(-1)
+        regret = []
+        env = deepcopy(self.env)
+
+        for _ in range(self.cfgs.train.expect_time):
+            state = env.reset()
+            action = self.strategies(torch.FloatTensor(state).to(torch.float64)\
+                .reshape(-1, 1).to(self.device)).squeeze().detach().cpu().numpy()
+            _, opt_reward = env.find_optim_action(action, idx=0)
+            _, reward, _ = env.step_without_packing(action)
+            regret.append((opt_reward - reward[0]) / state[0])
+
+        mean_ = sum(regret) / len(regret)
+        max_ = max(regret)
+        logger.debug(f'worker eval end, regret: {regret}')
+        return mean_, max_
     
+
     def MiniMax(self, alpha2, beta1=.9, beta2=.999, eps=1e-8):
         """min regret
         use adam to optimize lr alpha2
@@ -253,8 +275,12 @@ class Trainer(object):
             r = np.zeros(2 * self.J)
 
             with mp.Pool(processes=mp.cpu_count()) as p:
-                results = p.starmap(self.NESworker, [(epsilon[i], i, 
-                        t * 2 * self.J + i) for i in range(2 * self.J)])
+                eval_result = p.apply_async(self.eval_)
+                results = p.starmap(self.NESworker, [(epsilon[i], i, t * 2 * self.J + i) for i in range(2 * self.J)])
+
+                eval_mean, eval_max = eval_result.get()
+                self.logger.critical(f'update time {t}, mean regret: {eval_mean}, max regret: {eval_max}')
+
                 for result in results:
                     r[result[0]] = result[1]
 
@@ -265,60 +291,102 @@ class Trainer(object):
 
             sorted_indices = sorted(range(len(r)), key=lambda i: r[i], reverse=True)
 
-            # calculate gradient
-            grad_log_pi = [np.concatenate((
-                    epsilon[k] / self.strategies.nu,
-                    (epsilon[k] ** 2 - 1) / self.strategies.nu
-                ), axis=None) for k in range(2 * self.J)]
-            gradient = np.sum([u[k] * grad_log_pi[sorted_indices[k]] for k in range(2 * self.J)], axis=0)
+            # # calculate gradient
+            # grad_log_pi = [np.concatenate((
+            #         epsilon[k] / self.strategies.nu,
+            #         (epsilon[k] ** 2 - 1) / self.strategies.nu
+            #     ), axis=None) for k in range(2 * self.J)]
+            # gradient = np.sum([u[k] * grad_log_pi[sorted_indices[k]] for k in range(2 * self.J)], axis=0)
             
-            # fisher matrix and natural gradient
-            F = np.sum([grad_log_pi[k].reshape(-1,1) @ grad_log_pi[k].reshape(-1,1).T 
-                        for k in range(2 * self.J)], axis=0) / (2 * self.J)
-            inv_F = np.linalg.inv(F)
-            inv_F /= np.amax(inv_F)
-            natural_gradient = inv_F @ gradient
-            # logger.debug(natural_gradient)
+            # # fisher matrix and natural gradient
+            # F = np.sum([grad_log_pi[k].reshape(-1,1) @ grad_log_pi[k].reshape(-1,1).T 
+            #             for k in range(2 * self.J)], axis=0) / (2 * self.J)
+            # inv_F = np.linalg.inv(F)
+            # inv_F /= np.amax(inv_F)
+            # natural_gradient = inv_F @ gradient
 
-            # non fitness shaping
-            # gradient = np.sum([r[k] * epsilon[k] for k in range(2 * self.J)], axis=0) / (nu2 * self.J)
+            gradient = np.sum([u[k] * epsilon[sorted_indices[k]] for k in range(2 * self.J)], axis=0) / self.strategies.nu
 
             # Adam optimize
-            self.strategies.update(natural_gradient, alpha2, (beta1, beta2), eps)
+            self.strategies.update(gradient, alpha2, (beta1, beta2), eps)
 
             # save network param & adam param
-            torch.save(self.strategies.state_dict(), os.path.join(self.cfgs.results_subdirs[0], f'{self.cfgs.lambd}_{self.cfgs.is_burn}_{self.cfgs.a}.pth'))
+            torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
+            self.logger.debug(f'save model to {self.cfgs.path.model_path}')
 
             end_time = time.time()
             # print(f'end time: {time.asctime(time.localtime(end_time))}')
-            self.logger.info(f'update time {t}\tmin regret: {min(-r)}\texecute time: {(end_time - start_time) / 60} min')
+            self.logger.debug(f'update time {t + 1}, min regret: {min(-r)}, execute time: {(end_time - start_time) / 60} min')
     
         torch.set_grad_enabled(True)
 
 
     def training(self):
+        self.logger.info(f'*** NES Trainer start, lambda: {self.cfgs.lambd}, is_burn: {self.cfgs.burn_flag}, a: {self.cfgs.a}')
         mp.set_start_method('spawn')
         self.MiniMax(self.cfgs.train.alpha2)
-        # torch.save(self.strategies.state_dict(), self.cfgs.path.model_path)
+        self.logger.info(f'*** NES Trainer end, lambda: {self.cfgs.lambd}, is_burn: {self.cfgs.burn_flag}, a: {self.cfgs.a}')
+
+
+    def plot_strategy(self):
+        self.strategies.load_state_dict(torch.load(self.cfgs.path.model_path))
+
+        x = env.reset()
+        y = self.strategies(torch.FloatTensor(x).to(torch.float64)\
+            .reshape(-1, 1).to(device)).squeeze().detach().cpu().numpy()
+
+        plt.figure()
+        plt.plot(x, x, color='red', label='Truthful')
+        plt.scatter(x, y, s=5, alpha=.8, color='blue', label='Strategy')
+        plt.title('Fee - Valuation')
+        plt.xlabel('Valuation')
+        plt.ylabel('Transaction Fee')
+        plt.legend()
+        plt.savefig(self.cfgs.path.img_path)
+        plt.show()
 
 
 if __name__ == '__main__':
     import yaml
+    import argparse
+
     BASE_CONFIGS_PATH = r'./config/base.yaml'
-    ES_CONFIGS_PATH = r'./config/es.yaml'
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--lambd', type=float, default=None, help='')
+    parser.add_argument('--is_burn', type=int, default=None, help='')
+    parser.add_argument('--a', type=float, default=None, help='')
+    args = parser.parse_args()
 
     with open(BASE_CONFIGS_PATH, 'r') as cfgs_file:
         base_cfgs = yaml.load(cfgs_file, Loader=yaml.FullLoader)
     base_cfgs = edict(base_cfgs)
 
-    if ES_CONFIGS_PATH is not None:
-        with open(ES_CONFIGS_PATH, 'r') as cfgs_file:
-            cfgs = yaml.load(cfgs_file, Loader=yaml.FullLoader)
-    else:
-        cfgs = {}
-    cfgs = edict(cfgs)
-    cfgs.update(base_cfgs)
+    env: DAGEnv = gym.make('gym_dag_env-v0', 
+        fee_data_path=base_cfgs.fee_data_path, is_clip=base_cfgs.is_clip, 
+        clip_value=base_cfgs.clip_value, max_agents_num=base_cfgs.max_agents_num,
+        lambd=args.lambd, delta=base_cfgs.delta, a=args.a, b=base_cfgs.b, is_burn=args.is_burn,
+        sats_to_btc=base_cfgs.sats_to_btc, seed=int(time.time())
+    )
 
-    trainer = Trainer(cfgs)
-    trainer.strategies.load_state_dict(torch.load(cfgs.path.model_path))
-    print(f'regert: {-trainer.MinusRegret(trainer.strategies)}')
+    burn_flag = ['no', 'log', 'poly']
+    args.a = None if args.is_burn == 0 else args.a
+    fn = f'ES_{args.lambd}_{burn_flag[args.is_burn]}_{args.a}'
+
+    device = torch.device('cpu')
+    strategies = Net(num_agents=1, num_actions=1).to(device)
+    strategies.load_state_dict(torch.load(f'./results/models/{fn}.pth'))
+
+    x = env.reset()
+    y = strategies(torch.FloatTensor(x).to(torch.float64)\
+        .reshape(-1, 1).to(device)).squeeze().detach().cpu().numpy()
+
+    plt.figure()
+    plt.plot(x, x, color='red', label='Truthful')
+    plt.scatter(x, y, s=5, alpha=.8, color='blue', label='Strategy')
+    plt.title('Fee - Valuation')
+    plt.xlabel('Valuation')
+    plt.ylabel('Transaction Fee')
+    plt.legend()
+    plt.savefig(f'./results/img/{fn}.png')
+    plt.show()

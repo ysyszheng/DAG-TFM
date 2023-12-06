@@ -12,8 +12,9 @@ class Net(nn.Module):
 
         self.fc1 = nn.Linear(num_agents, hidden_layer_size[0])
         self.fc2 = nn.Linear(hidden_layer_size[0], hidden_layer_size[1])
-        self.fc_mean = nn.Linear(hidden_layer_size[1], num_actions)
-        self.fc_std = nn.Linear(hidden_layer_size[1], num_actions)
+        self.fc3 = nn.Linear(hidden_layer_size[1], num_actions)
+        # self.fc_mean = nn.Linear(hidden_layer_size[1], num_actions)
+        # self.fc_std = nn.Linear(hidden_layer_size[1], num_actions)
 
         torch.set_grad_enabled(False)
 
@@ -22,12 +23,14 @@ class Net(nn.Module):
 
         x = F.relu(self.fc1(s))
         x = F.relu(self.fc2(x))
-        mean = self.fc_mean(x)
-        raw_std = self.fc_std(x)
-        std = F.softplus(raw_std) + 1e-8
+        x = F.sigmoid(self.fc3(x))
+        a = x * s
+        # mean = self.fc_mean(x)
+        # raw_std = self.fc_std(x)
+        # std = F.softplus(raw_std) + 1e-8
 
-        dist = N(mean, std)
-        a = dist.sample()
+        # dist = N(mean, std)
+        # a = dist.sample()
         return a
 
 
