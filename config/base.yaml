@@ -9,8 +9,8 @@ seed: 3407
 max_agents_num: 500               # number of txs in delta time, i.e. txs arrival rate in unit time * network propagation delay
 lambd: 1.                         # block generation (Poisson process or other) rate in unit time
 delta: 1.                         # network propagation delay (need div delta when calc throughput TPS)
-b: 50                             # block size
 burn_flag: non                    # non, log, poly
+b: 50                             # block size
 a: 1.                             # used in a * log(1 + x/a)
 clip_value: 100000000             # upper bound value
 norm_value:                       # normalized value

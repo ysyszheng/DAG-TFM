@@ -34,6 +34,8 @@ def handle_cfgs(default, custom, verbose=True):
 
     # create path
     generate_path(cfgs)
+    cfgs.path.cfg_path = cfgs.cfg
+    del cfgs['cfg']
 
     if cfgs.burn_flag in ['non', 'log', 'poly']:
         if cfgs.burn_flag == 'non':

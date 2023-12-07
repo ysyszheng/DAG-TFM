@@ -229,7 +229,8 @@ class Trainer(object):
             _, reward, _ = env.step_without_packing(action)
             regret.append((opt_reward - reward[0]) / state[0])
 
-        mean_ = sum(regret) / len(regret)
+        # TODO: only consider non-zero value ?
+        mean_ = sum(regret[regret > 0]) / len(regret[regret > 0])
         max_ = max(regret)
         logger.debug(f'end, mean regret: {mean_}, max regret: {max_}, regret: {regret}')
 
@@ -250,12 +251,11 @@ class Trainer(object):
             _, opt_reward = env.find_optim_action(action, idx=0)
             _, reward, _ = env.step_without_packing(action)
             regret.append((opt_reward - reward[0]) / state[0])
-            logger.debug(f'state0: {state[0]}, action0: {action[0]}, reward0: {reward[0]}, optimal reward0: {opt_reward}')
-            # logger.debug(f'state0: {state[0]}, action0: {action[0]}, reward0: {reward[0]}, optimal reward0: {opt_reward}, state: {state}, action: {action}, reward: {reward}')
 
-        mean_ = sum(regret) / len(regret)
+        mean_ = sum(regret[regret > 0]) / len(regret[regret > 0])
         max_ = max(regret)
         logger.debug(f'end, regret: {regret}')
+
         return mean_, max_
     
 
@@ -336,12 +336,13 @@ class Trainer(object):
             title = f'y=a^{self.cfgs.a}'
 
         state = self.env.reset()
-        title = f'burn rule:{title}, in {self.env.delta} time, expected miner number: {self.env.delta * self.env.lambd}, true miner number: {self.env.num_miners}'
+        title = f'burning rule:{title}, delay {self.env.delta} s, expected #miner: {self.env.delta * self.env.lambd}, true #miner: {self.env.num_miners}'
 
         self.strategies.load_state_dict(torch.load(self.cfgs.path.model_path))
         action = self.strategies(
             torch.FloatTensor(state).to(torch.float64).reshape(-1, 1).to(self.device)
         ).squeeze().detach().cpu().numpy()
+        opt_action, opt_reward = self.env.find_all_optim_action(action)
         _, reward, _, info = self.env.step(action)
 
         title = f'{title}, throughput: {info["throughput"]} tps'
@@ -357,8 +358,10 @@ class Trainer(object):
 
         ax1.plot(state, state, label='Truthful')
         ax1.scatter(state, action, s=size, marker='o', alpha=alpha, label='Bid')
+        ax1.scatter(state, opt_action, s=size, marker='+', alpha=alpha, label='Optimal Bid')
         ax1.scatter(state, reward, s=size, marker='^', alpha=alpha, label='Expected Reward')
         ax1.scatter(state, info['true_reward'], marker='*', s=size, alpha=alpha, label='True Reward')
+        ax1.scatter(state, opt_reward, marker='s', s=size, alpha=alpha, label='Optimal Reward')
         ax1.set_xlabel('Valuation')
         ax1.set_ylabel('Bid or Reward')
         ax1.set_title(title)
@@ -374,7 +377,7 @@ class Trainer(object):
 
         plt.savefig(self.cfgs.path.img_path)
         plt.show()
-        self.logger.info(f'========== save figure to {self.cfgs.path.img_path} ==========')
+        self.logger.info(f'========== save figure to {self.cfgs.path.img_path} ==========\n')
 
 
 if __name__ == '__main__':

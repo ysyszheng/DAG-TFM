@@ -37,8 +37,25 @@ Run
 * Test: test throughputs
 * Eval: evaluate the equilibrium
 
+Example:
+
 ```bash
-python3 -u ./run.py --method ES --mode train --cfg ./config/es.yaml --lambd 1 --burn_flag non --a 1
+conda env create -f environment.yml
+conda activate <env_name>
+
+python3 -u ./run.py \
+--method ES \
+--mode train \
+--cfg ./config/es.yaml \
+--seed 3407\
+--max_agents_num 500\
+--lambd 1 \
+--delta 1 \
+--burn_flag log \
+--b 50 \
+--a 1 \
+--clip_value 100000000 \
+--norm_value 1
 ```
 
 Result
