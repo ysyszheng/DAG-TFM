@@ -1,17 +1,16 @@
-results_path: ./results
-fee_data_path: ./data/fee.npy
-results_subdirs:
-  - ./results/models
-  - ./results/data
-  - ./results/img
-  - ./results/log
+path:
+  fee_data_path: ./data/fee.npy
+  results_path: ./results
+  model_path: ./results/models
+  data_path: ./results/data
+  img_path: ./results/img
+  log_path: ./results/log
 seed: 3407
 max_agents_num: 500               # number of txs in delta time, i.e. txs arrival rate in unit time * network propagation delay
 lambd: 1.                         # block generation (Poisson process or other) rate in unit time
 delta: 1.                         # network propagation delay (need div delta when calc throughput TPS)
 b: 50                             # block size
-is_burn: 1                        # 0-nonburn, 1-log, 2-poly
+burn_flag: non                    # non, log, poly
 a: 1.                             # used in a * log(1 + x/a)
-is_clip: True                     # clip private value to an upper bound
 clip_value: 100000000             # upper bound value
-sats_to_btc: False                # unit from SATS to BTC
+norm_value:                       # normalized value

@@ -16,54 +16,54 @@ from scipy.optimize import brentq, fsolve, root_scalar, minimize_scalar
 from gym import spaces
 import numpy as np
 import random
-from utils.utils import log, fix_seed, get_dist_from_margin, print_thread_count
+from utils.utils import fix_seed, init_logger
 import time
 from copy import deepcopy
 
 
 class DAGEnv(gym.Env):
-    def __init__(self,
-                 fee_data_path,
-                 is_clip,
-                 clip_value,
-                 max_agents_num,
-                 lambd,
-                 delta,
-                 a,
-                 b,
-                 is_burn=False,
-                 seed=None,
-                 sats_to_btc=False):
+    def __init__(
+            self,
+            fee_data_path,
+            max_agents_num,
+            lambd,
+            delta,
+            a,
+            b,
+            burn_flag,
+            clip_value=None,
+            norm_value=None,
+            seed=None,
+            log_file_path=None
+        ):
         self.max_agents_num = max_agents_num
         self.lambd = lambd
         self.delta = delta
         self.a = a
         self.b = b
-        self.is_burn = is_burn
+        self.burn_flag = burn_flag
         self.eps = 1e-8
-        self.is_clip = is_clip
         self.clip_value = clip_value
-        self.sats_to_btc = sats_to_btc
+        self.norm_value = norm_value
 
         # action: transaction fee
         self.action_space = spaces.Box(
             low=0, high=np.inf, shape=(max_agents_num,), dtype=np.float32)
-        # state: private values of agents and 
+        # state: private values of agents
         self.observation_space = spaces.Box(
             low=0, high=np.inf, shape=(max_agents_num,), dtype=np.float32)
 
         self.fee_list = np.load(fee_data_path)
         self.fee_list = self.fee_list[self.fee_list > 0] # remove 0
-        if self.is_clip:
+
+        if self.clip_value is not None:
             self.fee_list = self.fee_list[self.fee_list <= self.clip_value]
-        if self.sats_to_btc:
-            self.fee_list /= 1e8
-
-        self.state_mean = np.mean(self.fee_list)
-        self.state_std = np.std(self.fee_list)
-
+        if self.norm_value is not None:
+            self.fee_list /= self.norm_value
         if seed is not None:
             fix_seed(seed)
+        if log_file_path is not None:
+            self.logger = init_logger(__name__, log_file_path)
 
 
     def f(self, p):
@@ -156,21 +156,27 @@ class DAGEnv(gym.Env):
 
         unique_txs = set(included_txs)
         included_txs_bool = np.zeros_like(self.state)
+        true_reward = np.zeros_like(self.state)
         for i in unique_txs:
             included_txs_bool[i] = 1
+            true_reward[i] = self.state[i] - actions[i]
         num_unique_txs = len(unique_txs)
         throughput_tps = num_unique_txs / self.delta
         optimal_throughput_tps = self.num_miners * self.b / self.delta
-        total_private_value = sum(self.state[tx_id] for tx_id in unique_txs) # social welfare
+        social_welfare = sum(self.state[tx_id] for tx_id in unique_txs) # social welfare
 
         # update state
         done = True
         self.reset()
 
-        return self.state, rewards, done, \
-            {"probabilities": probabilities, "throughput": throughput_tps, \
-             "optimal": optimal_throughput_tps, "total_private_value": total_private_value, \
-             "included_txs": included_txs_bool}
+        return self.state, rewards, done, {
+            "probabilities": probabilities, 
+            "throughput": throughput_tps,
+            "optim_throughput": optimal_throughput_tps, 
+            "social_welfare": social_welfare,
+            "included_txs": included_txs_bool,
+            "true_reward": true_reward,
+        }
 
 
     def find_optim_action(self, actions, idx=0):
@@ -277,23 +283,23 @@ class DAGEnv(gym.Env):
     def calculate_rewards(self, actions):
         rewards = np.zeros(self.num_agents)
 
-        if self.is_burn == 2:
-            actions_burn = np.where(actions >= 0, actions ** self.a, actions)
-            probabilities = self.calculate_probabilities(actions_burn)
-        elif self.is_burn == 1:
+        if self.burn_flag == 'non':
+            probabilities = self.calculate_probabilities(actions)
+        elif self.burn_flag == 'log':
             actions_burn = np.where(actions >= 0, self.a * np.log(1 + actions / self.a), actions)
             probabilities = self.calculate_probabilities(actions_burn)
-        elif self.is_burn == 0:
-            probabilities = self.calculate_probabilities(actions)
+        elif self.burn_flag == 'poly':
+            actions_burn = np.where(actions >= 0, actions ** self.a, actions)
+            probabilities = self.calculate_probabilities(actions_burn)
         else:
-            raise ValueError
+            raise ValueError('Param `burn_flag` not in ["non", "log", "poly"].')
 
         for i in range(self.num_agents):
             private_value = self.state[i]
             offer_price = actions[i]
             probability = probabilities[i]
-
-            rewards[i] =  (1 - (1 - probability) ** self.num_miners) * \
+            # TODO: use self.num_miners or self.lambd * self.delta ?
+            rewards[i] =  (1 - (1 - probability) ** (self.lambd * self.delta)) * \
                 (private_value - offer_price)
 
         return rewards, probabilities
@@ -342,14 +348,14 @@ if __name__ == '__main__':
         fix_seed(base_cfgs.seed)
         env = DAGEnv(
                 fee_data_path=base_cfgs.fee_data_path,
-                is_clip=base_cfgs.is_clip,
-                clip_value=base_cfgs.clip_value,
                 max_agents_num=base_cfgs.max_agents_num,
                 lambd=lambd,
                 delta=base_cfgs.delta,
                 b=base_cfgs.b,
                 a=0.01,
-                is_burn=0,
+                burn_flag=0,
+                clip_value=base_cfgs.clip_value,
+                norm_value=base_cfgs.norm_value,
         )
         state = env.reset()
         
@@ -359,7 +365,7 @@ if __name__ == '__main__':
         for _ in range(100):
             state, _, _ , info = env.step(state)
             throughput_list.append(info["throughput"])
-            sw_list.append(info['total_private_value'])
+            sw_list.append(info['social_welfare'])
         print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')
 
     with mp.Pool(processes=mp.cpu_count()) as p:

@@ -1,21 +1,23 @@
 import argparse
 import yaml
 from easydict import EasyDict as edict
-import os
-import shutil
+from utils.cfgs import handle_cfgs
 
 
+# global configs
 BASE_CONFIGS_PATH = r'./config/base.yaml'
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--method', type=str, default=None, help='Mode Name')
-    parser.add_argument('--mode', type=str, default='train', help='Mode Name')
-    parser.add_argument('--cfg', type=str, default=None, help='Config Path')
-    parser.add_argument('--lambd', type=float, default=None, help='')
-    parser.add_argument('--is_burn', type=int, default=None, help='')
-    parser.add_argument('--a', type=float, default=None, help='')
+    parser.add_argument('--method', type=str, required=True, help='Mode Name')
+    parser.add_argument('--mode', type=str, required=True, default='train', help='Mode Name')
+    parser.add_argument('--cfg', type=str, required=True, help='Config Path')
+    parser.add_argument('--lambd', type=float)
+    parser.add_argument('--burn_flag', type=str)
+    parser.add_argument('--a', type=float)
     args = parser.parse_args()
+    args = argparse.Namespace(**{k: v for k, v in vars(args).items() if v is not None})
 
     with open(BASE_CONFIGS_PATH, 'r') as cfgs_file:
         base_cfgs = yaml.load(cfgs_file, Loader=yaml.FullLoader)
@@ -26,73 +28,70 @@ if __name__ == '__main__':
             cfgs = yaml.load(cfgs_file, Loader=yaml.FullLoader)
     else:
         cfgs = {}
+        raise ValueError('Param `cfgs` is None.')
+
     cfgs = edict(cfgs)
     cfgs.update(base_cfgs)
+    cfgs = handle_cfgs(cfgs, vars(args))
 
-    cfgs.lambd = args.lambd if args.lambd is not None else cfgs.lambd
-    cfgs.is_burn = args.is_burn if args.is_burn is not None else cfgs.is_burn
-    cfgs.a = args.a if args.a is not None else cfgs.a
 
-    cfgs.a = cfgs.a if cfgs.is_burn != 0 else None
-    cfgs.method = args.method if args.method is not None else None
-    cfgs.mode = args.mode if args.mode is not None else None
-
-    burn_flag = ['no', 'log', 'poly']
-    cfgs.burn_flag = burn_flag[cfgs.is_burn]
-
-    cfgs.path.model_path = os.path.join(cfgs.results_subdirs[0], 
-                f'{cfgs.method}_{cfgs.lambd}_{cfgs.burn_flag}_{cfgs.a}.pth')
-    cfgs.path.img_path = os.path.join(cfgs.results_subdirs[2], 
-                f'{cfgs.method}_{cfgs.lambd}_{cfgs.burn_flag}_{cfgs.a}.img')
-    cfgs.path.log_path = os.path.join(cfgs.results_subdirs[3], 
-                f'{cfgs.method}_{cfgs.mode}_{cfgs.lambd}_{cfgs.burn_flag}_{cfgs.a}.log')
-
-    if args.mode == 'train':
-        os.makedirs(cfgs.results_path, exist_ok=True)
-        shutil.copy(BASE_CONFIGS_PATH, f'{cfgs.results_path}/{args.method}_base.backup')
-        shutil.copy(args.cfg, f'{cfgs.results_path}/{args.method}_cfg.backup')
-        for subdir in cfgs.results_subdirs:
-            os.makedirs(subdir, exist_ok=True)
-
-        if args.method == 'DDPG':
+    if cfgs.mode == 'train':
+        if cfgs.method == 'DDPG':
             from scripts.train_ddpg import Trainer
-        elif args.method == 'PPO':
+        elif cfgs.method == 'PPO':
             from scripts.train_ppo import Trainer
-        elif args.method == 'NN':
+        elif cfgs.method == 'NN':
             from scripts.train_nn import Trainer
-        elif args.method == 'DNN':
+        elif cfgs.method == 'DNN':
             from scripts.train_dnn import Trainer
-        elif args.method == 'ES':
+        elif cfgs.method == 'ES':
             from scripts.train_es import Trainer
-        elif args.method == 'CMAES':
+        elif cfgs.method == 'CMAES':
             from scripts.train_cmaes import Trainer
+        else:
+            raise NotImplementedError(f'Method {cfgs.method} is not implemented in {cfgs.mode} mode.')
+
         trainer = Trainer(cfgs)
         trainer.training()
-    elif args.mode == 'test':
-        if args.method == 'DDPG':
+
+    elif cfgs.mode == 'test':
+        if cfgs.method == 'DDPG':
             from scripts.test_ddpg import Tester
-        elif args.method == 'PPO':
+        elif cfgs.method == 'PPO':
             from scripts.test_ppo import Tester
-        elif args.method == 'NN':
+        elif cfgs.method == 'NN':
             from scripts.test_nn import Tester
-        elif args.method == 'ES':
+        elif cfgs.method == 'ES':
             from scripts.test_es import Tester
-        # args.method == 'CMAES':
-        #     from scripts.test_cmaes import Tester
+        else:
+            raise NotImplementedError(f'Method {cfgs.method} is not implemented in {cfgs.mode} mode.')
+        
         tester = Tester(cfgs)
         tester.testing()
-    elif args.mode == 'eval':
-        if args.method == 'DDPG':
+
+    elif cfgs.mode == 'eval':
+        if cfgs.method == 'DDPG':
             from scripts.eval_ddpg import Evaluator
-        elif args.method == 'PPO':
+        elif cfgs.method == 'PPO':
             from scripts.eval_ppo import Evaluator
-        elif args.method == 'NN':
+        elif cfgs.method == 'NN':
             from scripts.eval_nn import Evaluator
-        elif args.method == 'ES':
+        elif cfgs.method == 'ES':
             from scripts.eval_es import Evaluator
-        elif args.method == 'CMAES':
+        elif cfgs.method == 'CMAES':
             from scripts.eval_cmaes import Evaluator
+        else:
+            raise NotImplementedError(f'Method {cfgs.method} is not implemented in {cfgs.mode} mode.')
+
         evaluator = Evaluator(cfgs)
         evaluator.evaluating()
+
+    elif cfgs.mode == 'show':
+        if cfgs.method == 'ES':
+            from scripts.train_es import Trainer
+            Trainer(cfgs).plot_strategy()
+        else:
+            raise NotImplementedError(f'Method {cfgs.method} is not implemented in {cfgs.mode} mode.')
+
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f'Mode {cfgs.mode} is not implemented.')

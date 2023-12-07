@@ -34,10 +34,9 @@ class Trainer(object):
         self.J = int(4 + 3 * np.floor(np.log(self.d))) // 2 # 25 / 2
 
         self.env: DAGEnv = gym.make('gym_dag_env-v0', 
-            fee_data_path=cfgs.fee_data_path, is_clip=cfgs.is_clip, 
-            clip_value=cfgs.clip_value, max_agents_num=cfgs.max_agents_num,
-            lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, is_burn=cfgs.is_burn,
-            sats_to_btc=cfgs.sats_to_btc,
+            fee_data_path=cfgs.path.fee_data_path, max_agents_num=cfgs.max_agents_num,
+            lambd=cfgs.lambd, delta=cfgs.delta, a=cfgs.a, b=cfgs.b, burn_flag=cfgs.burn_flag,
+            clip_value=cfgs.clip_value, norm_value=cfgs.norm_value, log_file_path=cfgs.path.log_path,
         )
 
         self.logger = init_logger(__name__, self.cfgs.path.log_path)
@@ -209,9 +208,9 @@ class Trainer(object):
     def NESworker(self, e, i, seed):
         """Natural Evolution Strategies
         """
-        logger = init_logger(__name__, self.cfgs.path.log_path)
+        logger = init_logger(f'worker {i}', self.cfgs.path.log_path)
         fix_seed(seed)
-        logger.debug(f'worker {i} start')
+        logger.debug(f'start')
 
         snet = Net(num_agents=1, num_actions=1).to(self.device)
         snet.load_state_dict(self.strategies.state_dict())
@@ -232,15 +231,15 @@ class Trainer(object):
 
         mean_ = sum(regret) / len(regret)
         max_ = max(regret)
-        logger.debug(f'worker {i} end, mean regret: {mean_}, max regret: {max_}, regret: {regret}')
+        logger.debug(f'end, mean regret: {mean_}, max regret: {max_}, regret: {regret}')
 
-        return i, -mean_ # TODO!
+        return i, -mean_
 
 
     def eval_(self):
-        logger = init_logger(__name__, self.cfgs.path.log_path)
-        logger.debug(f'worker eval start')
-        # fix_seed(-1)
+        logger = init_logger('worker eval', self.cfgs.path.log_path)
+        logger.debug(f'start')
+        fix_seed(65535)
         regret = []
         env = deepcopy(self.env)
 
@@ -251,10 +250,12 @@ class Trainer(object):
             _, opt_reward = env.find_optim_action(action, idx=0)
             _, reward, _ = env.step_without_packing(action)
             regret.append((opt_reward - reward[0]) / state[0])
+            logger.debug(f'state0: {state[0]}, action0: {action[0]}, reward0: {reward[0]}, optimal reward0: {opt_reward}')
+            # logger.debug(f'state0: {state[0]}, action0: {action[0]}, reward0: {reward[0]}, optimal reward0: {opt_reward}, state: {state}, action: {action}, reward: {reward}')
 
         mean_ = sum(regret) / len(regret)
         max_ = max(regret)
-        logger.debug(f'worker eval end, regret: {regret}')
+        logger.debug(f'end, regret: {regret}')
         return mean_, max_
     
 
@@ -265,9 +266,7 @@ class Trainer(object):
         torch.set_grad_enabled(False)
 
         for t in range(self.cfgs.train.outer_iterations):
-            # print(f'************* iter: {t} *************')
             start_time = time.time()
-            # print(f'start time: {time.asctime(time.localtime(start_time))}')
 
             epsilon = np.random.normal(0, 1, size=(self.J, self.d))
             epsilon = np.concatenate((epsilon, -epsilon), axis=0)
@@ -315,78 +314,68 @@ class Trainer(object):
             self.logger.debug(f'save model to {self.cfgs.path.model_path}')
 
             end_time = time.time()
-            # print(f'end time: {time.asctime(time.localtime(end_time))}')
             self.logger.debug(f'update time {t + 1}, min regret: {min(-r)}, execute time: {(end_time - start_time) / 60} min')
     
         torch.set_grad_enabled(True)
 
 
     def training(self):
-        self.logger.info(f'*** NES Trainer start, lambda: {self.cfgs.lambd}, is_burn: {self.cfgs.burn_flag}, a: {self.cfgs.a}')
+        self.logger.info(f'========== {self.cfgs.method} Trainer start, lambda: {self.cfgs.lambd}, burn flag: {self.cfgs.burn_flag}, a: {self.cfgs.a} ==========')
         mp.set_start_method('spawn')
         self.MiniMax(self.cfgs.train.alpha2)
-        self.logger.info(f'*** NES Trainer end, lambda: {self.cfgs.lambd}, is_burn: {self.cfgs.burn_flag}, a: {self.cfgs.a}')
+        self.logger.info(f'========== {self.cfgs.method} Trainer end, lambda: {self.cfgs.lambd}, burn flag: {self.cfgs.burn_flag}, a: {self.cfgs.a} ==========\n')
 
 
-    def plot_strategy(self):
+    def plot_strategy(self, size=15, alpha=.5):
+        fix_seed(int(time.time()))
+        if self.cfgs.burn_flag == 'non':
+            title = f'y=x'
+        elif self.cfgs.burn_flag == 'log':
+            title = f'y={self.cfgs.a}*log(1+x/{self.cfgs.a})'
+        elif self.cfgs.burn_flag == 'poly':
+            title = f'y=a^{self.cfgs.a}'
+
+        state = self.env.reset()
+        title = f'burn rule:{title}, in {self.env.delta} time, expected miner number: {self.env.delta * self.env.lambd}, true miner number: {self.env.num_miners}'
+
         self.strategies.load_state_dict(torch.load(self.cfgs.path.model_path))
+        action = self.strategies(
+            torch.FloatTensor(state).to(torch.float64).reshape(-1, 1).to(self.device)
+        ).squeeze().detach().cpu().numpy()
+        _, reward, _, info = self.env.step(action)
 
-        x = env.reset()
-        y = self.strategies(torch.FloatTensor(x).to(torch.float64)\
-            .reshape(-1, 1).to(device)).squeeze().detach().cpu().numpy()
+        title = f'{title}, throughput: {info["throughput"]} tps'
 
-        plt.figure()
-        plt.plot(x, x, color='red', label='Truthful')
-        plt.scatter(x, y, s=5, alpha=.8, color='blue', label='Strategy')
-        plt.title('Fee - Valuation')
-        plt.xlabel('Valuation')
-        plt.ylabel('Transaction Fee')
-        plt.legend()
+        self.logger.debug(f'state: {state}')
+        self.logger.debug(f'action: {action}')
+        self.logger.debug(f'expected reward: {reward}')
+        self.logger.debug(f"probs: {info['probabilities']}")
+        self.logger.debug(f"include: {info['included_txs']}")
+        self.logger.debug(f"true reward: {info['true_reward']}")
+
+        _, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), dpi=150)
+
+        ax1.plot(state, state, label='Truthful')
+        ax1.scatter(state, action, s=size, marker='o', alpha=alpha, label='Bid')
+        ax1.scatter(state, reward, s=size, marker='^', alpha=alpha, label='Expected Reward')
+        ax1.scatter(state, info['true_reward'], marker='*', s=size, alpha=alpha, label='True Reward')
+        ax1.set_xlabel('Valuation')
+        ax1.set_ylabel('Bid or Reward')
+        ax1.set_title(title)
+        ax1.legend()
+
+        ax2.scatter(state, info['probabilities'], marker='o', s=size, alpha=alpha, label='Probabilities')
+        ax2.scatter(state, info['included_txs'], marker='^', s=size, alpha=alpha, label='Is included')
+        ax2.set_xlabel('Valuation')
+        ax2.set_ylabel('Probability or Bool value')
+        ax2.legend()
+
+        plt.tight_layout()
+
         plt.savefig(self.cfgs.path.img_path)
         plt.show()
+        self.logger.info(f'========== save figure to {self.cfgs.path.img_path} ==========')
 
 
 if __name__ == '__main__':
-    import yaml
-    import argparse
-
-    BASE_CONFIGS_PATH = r'./config/base.yaml'
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--lambd', type=float, default=None, help='')
-    parser.add_argument('--is_burn', type=int, default=None, help='')
-    parser.add_argument('--a', type=float, default=None, help='')
-    args = parser.parse_args()
-
-    with open(BASE_CONFIGS_PATH, 'r') as cfgs_file:
-        base_cfgs = yaml.load(cfgs_file, Loader=yaml.FullLoader)
-    base_cfgs = edict(base_cfgs)
-
-    env: DAGEnv = gym.make('gym_dag_env-v0', 
-        fee_data_path=base_cfgs.fee_data_path, is_clip=base_cfgs.is_clip, 
-        clip_value=base_cfgs.clip_value, max_agents_num=base_cfgs.max_agents_num,
-        lambd=args.lambd, delta=base_cfgs.delta, a=args.a, b=base_cfgs.b, is_burn=args.is_burn,
-        sats_to_btc=base_cfgs.sats_to_btc, seed=int(time.time())
-    )
-
-    burn_flag = ['no', 'log', 'poly']
-    args.a = None if args.is_burn == 0 else args.a
-    fn = f'ES_{args.lambd}_{burn_flag[args.is_burn]}_{args.a}'
-
-    device = torch.device('cpu')
-    strategies = Net(num_agents=1, num_actions=1).to(device)
-    strategies.load_state_dict(torch.load(f'./results/models/{fn}.pth'))
-
-    x = env.reset()
-    y = strategies(torch.FloatTensor(x).to(torch.float64)\
-        .reshape(-1, 1).to(device)).squeeze().detach().cpu().numpy()
-
-    plt.figure()
-    plt.plot(x, x, color='red', label='Truthful')
-    plt.scatter(x, y, s=5, alpha=.8, color='blue', label='Strategy')
-    plt.title('Fee - Valuation')
-    plt.xlabel('Valuation')
-    plt.ylabel('Transaction Fee')
-    plt.legend()
-    plt.savefig(f'./results/img/{fn}.png')
-    plt.show()
+    pass

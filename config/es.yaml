@@ -1,13 +1,8 @@
-path:
-  model_path: ./results/models/es.pth
-  log_path: ./results/data/es_log.csv
-  sw_path: ./results/data/es_sw.npy
-model:
 train:
   outer_iterations: 300
   # inner_iterations: 20
   # inner_oracle_query_times: 80
-  expect_time: 20
+  expect_time: 500
   # apr_test_times: 5
   # alpha1: .01
   # nu1: .1

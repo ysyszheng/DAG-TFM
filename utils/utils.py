@@ -3,16 +3,11 @@ import random
 import numpy as np
 import torch
 import os
-from typing import List
 import itertools
 from copy import deepcopy
-import threading
+
 
 NO_VERBOSE = False
-
-def print_thread_count():
-    thread_count = threading.active_count()
-    print(f"Current active thread count: {thread_count}")
 
 
 def fix_seed(seed):
@@ -36,11 +31,14 @@ def log(*args):
         print(colored_msg, *args)
 
 
-def init_logger(logger_name, file_path: str):
+def init_logger(logger_name, file_path: str, clear_file: bool = False):
     import logging
     logger = logging.getLogger(logger_name)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger.setLevel(logging.DEBUG)
+
+    if clear_file:
+        open(file_path, 'w').close()
 
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
