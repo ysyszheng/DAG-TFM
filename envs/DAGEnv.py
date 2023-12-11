@@ -114,7 +114,9 @@ class DAGEnv(gym.Env):
             return roots
 
 
-    def reset(self):
+    def reset(self, miner_mode='poisson'):
+        assert miner_mode in ['poisson', 'fix']
+
         # fix the number of txs in delta time (fix number of agents)
         self.num_agents = self.max_agents_num
 
@@ -123,9 +125,13 @@ class DAGEnv(gym.Env):
         # self.state = np.random.random(self.num_agents)
         
         # miner numbers in delta time, Poisson distribution or fixed number
-        self.num_miners = np.random.poisson(self.lambd * self.delta)
-        # self.num_miners = 1 + np.random.poisson(self.lambd * self.delta)
-        # self.num_miners = self.lambd * self.delta
+        if miner_mode == 'poisson':
+            self.num_miners = np.random.poisson(self.lambd * self.delta)
+            # self.num_miners = 1 + np.random.poisson(self.lambd * self.delta)
+        elif miner_mode == 'fix':
+            self.num_miners = round(self.lambd * self.delta)
+        else:
+            raise ValueError(f'Param `miner_mode` get invalid value {miner_mode}')
 
         return self.state
     
@@ -147,6 +153,7 @@ class DAGEnv(gym.Env):
         included_txs = []
         # use marginal probabilities
         for _ in range(self.num_miners):
+            # print('torched')
             selected_indices = []
             while len(selected_indices) != self.b:
                 random_numbers = np.random.rand(self.num_agents)

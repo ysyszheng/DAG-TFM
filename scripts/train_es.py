@@ -30,6 +30,9 @@ class Trainer(object):
         self.device = torch.device('cpu')
 
         self.strategies = Net(num_agents=1, num_actions=1, nu=self.cfgs.train.nu2).to(self.device)
+        if self.cfgs.train.is_load:
+            self.strategies.load_state_dict(torch.load(self.cfgs.path.model_path))
+
         self.d = self.strategies.d
         self.J = int(4 + 3 * np.floor(np.log(self.d))) // 2 # 25 / 2
 
@@ -219,8 +222,8 @@ class Trainer(object):
                 param.data.add_(delta)
 
         env = deepcopy(self.env)
-
         regret = []
+
         for _ in range(self.cfgs.train.expect_time):
             state = env.reset()
             action = snet(torch.FloatTensor(state).to(torch.float64)\
@@ -228,11 +231,11 @@ class Trainer(object):
             _, opt_reward = env.find_optim_action(action, idx=0)
             _, reward, _ = env.step_without_packing(action)
             regret.append((opt_reward - reward[0]) / state[0])
-
-        # TODO: only consider non-zero value ?
-        mean_ = sum(regret[regret > 0]) / len(regret[regret > 0])
+        
+        regret = np.array(regret)
+        mean_ = sum(regret) / len(regret) # TODO: only consider non-zero value ?
         max_ = max(regret)
-        logger.debug(f'end, mean regret: {mean_}, max regret: {max_}, regret: {regret}')
+        logger.debug(f'end, mean regret: {mean_}, max regret: {max_}')
 
         return i, -mean_
 
@@ -241,8 +244,9 @@ class Trainer(object):
         logger = init_logger('worker eval', self.cfgs.path.log_path)
         logger.debug(f'start')
         fix_seed(65535)
-        regret = []
+
         env = deepcopy(self.env)
+        regret = []
 
         for _ in range(self.cfgs.train.expect_time):
             state = env.reset()
@@ -252,9 +256,10 @@ class Trainer(object):
             _, reward, _ = env.step_without_packing(action)
             regret.append((opt_reward - reward[0]) / state[0])
 
-        mean_ = sum(regret[regret > 0]) / len(regret[regret > 0])
+        regret = np.array(regret)
+        mean_ = sum(regret) / len(regret)
         max_ = max(regret)
-        logger.debug(f'end, regret: {regret}')
+        logger.debug(f'end, mean regret: {mean_}, max regret: {max_}')
 
         return mean_, max_
     
@@ -326,24 +331,27 @@ class Trainer(object):
         self.logger.info(f'========== {self.cfgs.method} Trainer end, lambda: {self.cfgs.lambd}, burn flag: {self.cfgs.burn_flag}, a: {self.cfgs.a} ==========\n')
 
 
-    def plot_strategy(self, size=15, alpha=.5):
-        fix_seed(int(time.time()))
+    def plot_strategy(self, size=20, alpha=.5):
+        fix_seed(int(time.time())) # TODO:
+
         if self.cfgs.burn_flag == 'non':
             title = f'y=x'
         elif self.cfgs.burn_flag == 'log':
             title = f'y={self.cfgs.a}*log(1+x/{self.cfgs.a})'
         elif self.cfgs.burn_flag == 'poly':
-            title = f'y=a^{self.cfgs.a}'
+            title = f'y=x^{self.cfgs.a}'
 
-        state = self.env.reset()
+        state = self.env.reset(miner_mode='fix')
         title = f'burning rule:{title}, delay {self.env.delta} s, expected #miner: {self.env.delta * self.env.lambd}, true #miner: {self.env.num_miners}'
 
         self.strategies.load_state_dict(torch.load(self.cfgs.path.model_path))
         action = self.strategies(
             torch.FloatTensor(state).to(torch.float64).reshape(-1, 1).to(self.device)
         ).squeeze().detach().cpu().numpy()
+        # action = state ** 0.9 # FIXME:
         opt_action, opt_reward = self.env.find_all_optim_action(action)
         _, reward, _, info = self.env.step(action)
+        regret = (opt_reward-reward)/state
 
         title = f'{title}, throughput: {info["throughput"]} tps'
 
@@ -354,30 +362,45 @@ class Trainer(object):
         self.logger.debug(f"include: {info['included_txs']}")
         self.logger.debug(f"true reward: {info['true_reward']}")
 
-        _, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), dpi=150)
+        self.logger.info(f'========== regret info ==========')
+        self.logger.info(f'mean regret: {sum(regret)/len(regret)}, max regret: {max(regret)}')
+        self.logger.info(f'========== regret info ==========\n')
+
+        _, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), dpi=200)
 
         ax1.plot(state, state, label='Truthful')
         ax1.scatter(state, action, s=size, marker='o', alpha=alpha, label='Bid')
-        ax1.scatter(state, opt_action, s=size, marker='+', alpha=alpha, label='Optimal Bid')
+        ax1.scatter(state, opt_action, s=size, marker='o', alpha=alpha, label='Optimal Bid')
         ax1.scatter(state, reward, s=size, marker='^', alpha=alpha, label='Expected Reward')
-        ax1.scatter(state, info['true_reward'], marker='*', s=size, alpha=alpha, label='True Reward')
-        ax1.scatter(state, opt_reward, marker='s', s=size, alpha=alpha, label='Optimal Reward')
-        ax1.set_xlabel('Valuation')
-        ax1.set_ylabel('Bid or Reward')
+        ax1.scatter(state, info['true_reward'], marker='^', s=size, alpha=alpha, label='True Reward')
+        ax1.scatter(state, opt_reward, marker='^', s=size, alpha=alpha, label='Optimal Reward')
+        ax1.set_xlabel(f'Valuation / {self.cfgs.norm_value} SATs')
+        ax1.set_ylabel(f'Bid or Reward / {self.cfgs.norm_value} SATs')
         ax1.set_title(title)
         ax1.legend()
-
+        ax1.grid(True)
+        
         ax2.scatter(state, info['probabilities'], marker='o', s=size, alpha=alpha, label='Probabilities')
         ax2.scatter(state, info['included_txs'], marker='^', s=size, alpha=alpha, label='Is included')
-        ax2.set_xlabel('Valuation')
-        ax2.set_ylabel('Probability or Bool value')
+        ax2.scatter(state, regret, marker='+', s=size, alpha=alpha, label='regret=(E[r]-max r)/v')
+        ax2.set_xlabel(f'Valuation / {self.cfgs.norm_value} SATs')
+        ax2.set_ylabel('Probability or Regret')
         ax2.legend()
+        ax2.grid(True)
+
+        # ax3.scatter(action, info['probabilities'], marker='o', s=size, alpha=alpha, label='Probabilities')
+        # ax3.set_xlabel(f'Bid / {self.cfgs.norm_value} SATs')
+        # ax3.set_ylabel('Probability')
+        # ax3.legend()
+        # ax3.grid(True)
 
         plt.tight_layout()
 
         plt.savefig(self.cfgs.path.img_path)
         plt.show()
-        self.logger.info(f'========== save figure to {self.cfgs.path.img_path} ==========\n')
+        self.logger.info(f'========== save figure ==========')
+        self.logger.info(f'save figure to {self.cfgs.path.img_path}')
+        self.logger.info(f'========== save figure ==========\n')
 
 
 if __name__ == '__main__':

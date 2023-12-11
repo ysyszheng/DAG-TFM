@@ -1,5 +1,5 @@
 train:
-  outer_iterations: 300
+  outer_iterations: 10
   # inner_iterations: 20
   # inner_oracle_query_times: 80
   expect_time: 500
@@ -7,8 +7,9 @@ train:
   # alpha1: .01
   # nu1: .1
   alpha2: .04
-  nu2: .05
+  nu2: .2
   eval_freq: 5
+  is_load: False
 eval:
   test_round: 100
 test:
