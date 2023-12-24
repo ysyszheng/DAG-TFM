@@ -40,14 +40,14 @@ Run
 Example:
 
 ```bash
-conda env create -f environment.yml
-conda activate <env_name>
+$> conda env create -f environment.yml
+$> conda activate <env_name>
 
-python3 -u ./run.py \
+$> python3 -u ./run.py \
         --method ES \
         --mode train \
         --cfg ./config/es.yaml \
-        --seed 3407\
+        --seed 3407 \
         --max_agents_num 500\
         --lambd 1 \
         --delta 1 \
@@ -61,4 +61,11 @@ python3 -u ./run.py \
 Result
 -----
 
-![example](./assets/example.png)
+| lambda | 1 | 3 | 5 | 10 |
+| - | - | - | - | - |
+| non | ✅ | ✅ | ✅ | ✅ |
+| y=log(1+x) | ✅ | ✅ | ✅ | ✅ |
+| y=100log(1+x/100) | ✅ | ✅ | ✅ | ✅ |
+| y=0.01log(1+x/0.01) | ✅ | ✅ | ✅ | ✅ |
+| y=x^0.5 | ✅ | ✅ | ✅ | ✅ |
+| y=x^0.01 | ✅ | ✅ | ✅ | ✅ |

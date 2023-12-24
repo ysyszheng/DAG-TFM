@@ -21,20 +21,20 @@ function run_python() {
 
 for lambd in 1 3 5 10
 do
-    # First-Price
-    run_python --method ES --mode train --cfg ./config/es.yaml --lambd "$lambd" --burn_flag 'non'
+    # # First-Price
+    # run_python --method ES --mode train --cfg ./config/es.yaml --lambd "$lambd" --burn_flag 'non'
 
-    # # Log-Burn
+    # Log-Burn
     # for a in 1 0.01 100
     # do
     #     run_python --method ES --mode train --cfg ./config/es.yaml --lambd "$lambd" --burn_flag 'log' --a "$a"
     # done
     
     # # Poly-Burn
-    # for a in 0.5 0.01
-    # do
-    #     run_python --method ES --mode train --cfg ./config/es.yaml --lambd "$lambd" --burn_flag 'poly' --a "$a"
-    # done
+    for a in 0.01 # 0.5
+    do
+        run_python --method ES --mode train --cfg ./config/es.yaml --lambd "$lambd" --burn_flag 'poly' --a "$a"
+    done
 done
 
 wait

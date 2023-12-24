@@ -360,7 +360,7 @@ if __name__ == '__main__':
                 delta=base_cfgs.delta,
                 b=base_cfgs.b,
                 a=0.01,
-                burn_flag=0,
+                burn_flag='non',
                 clip_value=base_cfgs.clip_value,
                 norm_value=base_cfgs.norm_value,
         )
@@ -376,4 +376,4 @@ if __name__ == '__main__':
         print(f'lambda: {lambd}, throughout: {sum(throughput_list)/len(throughput_list)}, sw: {sum(sw_list)/len(sw_list)}')
 
     with mp.Pool(processes=mp.cpu_count()) as p:
-        p.map(worker, [5])
+        p.map(worker, [1, 3, 5, 10])

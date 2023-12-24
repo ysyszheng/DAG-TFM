@@ -340,6 +340,10 @@ class Trainer(object):
             title = f'y={self.cfgs.a}*log(1+x/{self.cfgs.a})'
         elif self.cfgs.burn_flag == 'poly':
             title = f'y=x^{self.cfgs.a}'
+        if self.cfgs.norm_value is not None:
+            unit = f'{self.cfgs.norm_value} SATs'
+        else:
+            unit = f'SATs'
 
         state = self.env.reset(miner_mode='fix')
         title = f'burning rule:{title}, delay {self.env.delta} s, expected #miner: {self.env.delta * self.env.lambd}, true #miner: {self.env.num_miners}'
@@ -348,7 +352,7 @@ class Trainer(object):
         action = self.strategies(
             torch.FloatTensor(state).to(torch.float64).reshape(-1, 1).to(self.device)
         ).squeeze().detach().cpu().numpy()
-        # action = state ** 0.9 # FIXME:
+        
         opt_action, opt_reward = self.env.find_all_optim_action(action)
         _, reward, _, info = self.env.step(action)
         regret = (opt_reward-reward)/state
@@ -374,8 +378,8 @@ class Trainer(object):
         ax1.scatter(state, reward, s=size, marker='^', alpha=alpha, label='Expected Reward')
         ax1.scatter(state, info['true_reward'], marker='^', s=size, alpha=alpha, label='True Reward')
         ax1.scatter(state, opt_reward, marker='^', s=size, alpha=alpha, label='Optimal Reward')
-        ax1.set_xlabel(f'Valuation / {self.cfgs.norm_value} SATs')
-        ax1.set_ylabel(f'Bid or Reward / {self.cfgs.norm_value} SATs')
+        ax1.set_xlabel(f'Valuation / {unit}')
+        ax1.set_ylabel(f'Bid or Reward / {unit}')
         ax1.set_title(title)
         ax1.legend()
         ax1.grid(True)
@@ -383,7 +387,7 @@ class Trainer(object):
         ax2.scatter(state, info['probabilities'], marker='o', s=size, alpha=alpha, label='Probabilities')
         ax2.scatter(state, info['included_txs'], marker='^', s=size, alpha=alpha, label='Is included')
         ax2.scatter(state, regret, marker='+', s=size, alpha=alpha, label='regret=(E[r]-max r)/v')
-        ax2.set_xlabel(f'Valuation / {self.cfgs.norm_value} SATs')
+        ax2.set_xlabel(f'Valuation / {unit}')
         ax2.set_ylabel('Probability or Regret')
         ax2.legend()
         ax2.grid(True)
